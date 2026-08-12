@@ -6,3 +6,12 @@
 *.iml
 out
 gen
+build
+
+# Python
+__pycache__/
+*.pyc
+
+# PyInstaller build output
+dist/
+*.spec

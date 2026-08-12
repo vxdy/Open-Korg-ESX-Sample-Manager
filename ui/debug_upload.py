@@ -5,8 +5,8 @@ import urllib.request
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
-DEBUG_API_URL = "http://127.0.0.1:8765/debug-upload"
-DEBUG_CRASH_API_URL = "http://127.0.0.1:8765/debug-crash"
+DEBUG_API_URL = "https://debug.eventiva.io/debug-upload"
+DEBUG_CRASH_API_URL = "https://debug.eventiva.io/debug-crash"
 
 
 class DebugUploadThread(QThread):
