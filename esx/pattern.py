@@ -14,8 +14,10 @@ from .utils import unpack_int, pack_int, decode_name, encode_name, safe_enum
 
 
 class SequenceData:
+    # Stored as a bytearray (not bytes) so the pattern step editor can flip
+    # individual step bits in place instead of rebuilding the object.
     def __init__(self, raw_bytes=None):
-        self.data = raw_bytes if raw_bytes else bytes(NUM_SEQUENCE_DATA)
+        self.data = bytearray(raw_bytes) if raw_bytes else bytearray(NUM_SEQUENCE_DATA)
 
     def to_bytes(self):
         return self.data
@@ -23,7 +25,7 @@ class SequenceData:
 
 class SequenceDataGate:
     def __init__(self, raw_bytes=None):
-        self.data = raw_bytes if raw_bytes else bytes(NUM_SEQUENCE_DATA_GATE)
+        self.data = bytearray(raw_bytes) if raw_bytes else bytearray(NUM_SEQUENCE_DATA_GATE)
 
     def to_bytes(self):
         return self.data
@@ -31,7 +33,7 @@ class SequenceDataGate:
 
 class SequenceDataNote:
     def __init__(self, raw_bytes=None):
-        self.data = raw_bytes if raw_bytes else bytes(NUM_SEQUENCE_DATA_NOTE)
+        self.data = bytearray(raw_bytes) if raw_bytes else bytearray(NUM_SEQUENCE_DATA_NOTE)
 
     def to_bytes(self):
         return self.data

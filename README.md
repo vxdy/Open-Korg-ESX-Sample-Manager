@@ -4,10 +4,14 @@ Ein plattformunabhängiger Desktop-Editor für **Korg Electribe `.esx`-Dateien**
 
 ## Funktionen
 
+- **Start-Dialog** – Beim Programmstart wählen, ob mit einer leeren Vorlage begonnen oder eine vorhandene `.esx`-Datei geöffnet wird; über *Datei → Neu* (Strg+N) auch später jederzeit erreichbar
 - **Info-Tab** – Übersicht über Dateistatistiken (genutzte Patterns/Samples/Songs, belegter Sample-Speicher)
 - **Global-Tab** – Bearbeiten der globalen Parameter der `.esx`-Datei
 - **Patterns-Tab** – Patterns anzeigen und bearbeiten, inkl. Export/Import einzelner Patterns als `.esxpat` (samt referenzierter Samples), um sie zwischen Projekten auszutauschen
-- **Samples-Tab** – Samples importieren (WAV, optional automatische Mono-Konvertierung), Wellenform-Anzeige, Vorhören per eingebautem Audio-Player, einzelne oder ungenutzte Samples löschen
+  - **Steps-Untertab** – Step-Sequencer-Raster je Part (Bars/Steps passend zu Pattern-Länge und Last Step), Mute/Solo pro Part, Kopieren/Einfügen ganzer Step-Reihen, durchsuchbare Sample-Zuweisung je Part sowie Wiedergabe des Patterns direkt in der App inkl. Live-Playhead – Mute-, Solo- und Step-Änderungen sind sofort hörbar, auch während die Wiedergabe läuft
+- **Samples-Tab** – Samples importieren (WAV, optional automatische Mono-Konvertierung, optional mit +12 dB Pegel), durchsuchbare/filterbare Sample-Liste, Anzeige des belegten Sample-Speichers als Fortschrittsbalken mit Prozentwert, Wellenform-Anzeige, Vorhören per eingebautem Audio-Player, einzelne oder ungenutzte Samples löschen
+  - **Sample-Werkzeuge-Untertab** – Trim/Cut per Drag&Drop-Auswahl direkt in der Wellenform, Normalisierung mit Undo der letzten Operation
+  - **EQ-Untertab** – Interaktiver parametrischer Equalizer (bis zu 15 Bänder: Peak, Low-/High-Shelf, Low-/High-Pass) mit per Maus verschiebbaren Punkten auf der Frequenzgang-Kurve (Scrollen ändert die Güte/Q), Vorhören mit angewendetem EQ und dauerhaftes Einrechnen in das Sample, inkl. Undo
 - **Songs-Tab** – Songs anzeigen und bearbeiten
 - **Datei-Explorer** – Andockbare Seitenleiste zum Navigieren im Dateisystem und Öffnen von `.esx`/`.wav`/`.mp3`/`.aiff`-Dateien
 - **Pattern-Browser** – Verwaltung exportierter Patterns

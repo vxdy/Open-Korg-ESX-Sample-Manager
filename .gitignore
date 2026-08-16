@@ -15,3 +15,9 @@ __pycache__/
 # PyInstaller build output
 dist/
 *.spec
+
+example/*
+/example/
+
+# Local debug .esx files auto-loaded at startup
+/debug/

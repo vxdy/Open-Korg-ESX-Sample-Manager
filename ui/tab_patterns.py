@@ -7,7 +7,8 @@ from PyQt6.QtWidgets import (
     QDoubleSpinBox, QSpinBox, QLabel, QHeaderView, QAbstractItemView,
     QPushButton, QMessageBox, QFileDialog
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer
+from PyQt6.QtGui import QColor, QFont
 
 from esx.constants import (
     AmpEg, BpmSync, Beat, FilterType, FxChain, FxSelect, FxSend,
@@ -17,8 +18,11 @@ from esx.constants import (
 from esx.pattern import Pattern
 from esx.pattern_transfer import export_pattern, import_pattern
 from esx.app_paths import get_patterns_dir
+from audio.sequencer_engine import SequencerPlaybackEngine
 from ui.error_log import report_error
 from ui import icons
+from ui.searchable_combo import SearchableComboBox
+from ui.theme import ACCENT, BG_FIELD, BG_FIELD_HOVER, BG_PANEL, BORDER, BORDER_LIGHT, TEXT_DIM
 
 
 PART_FIELD_SPECS = [
@@ -75,6 +79,76 @@ INT_RANGES = {
 
 
 PATTERN_FILE_MIME_TYPE = "application/x-esx-pattern-file"
+
+# Steps tab: one row-group per part (Accent has no row, but keeps its bit in
+# mute_status), stacked into one sub-row per bar (Pattern Length, 1-8) with
+# one toggle button per step in that bar. "bits" parts pack 1 bit/step into
+# sequence_data (bit order assumed LSB-first per byte, undocumented in the
+# ESX format); "gate" parts (keyboard) use 1 byte/step in sequence_data_gate.
+# Both buffers hold 128 steps total, so a part's addressable steps across all
+# bars are laid out back-to-back: global_step = bar_index * steps_per_bar + col.
+# Single unified table: each part is one info row directly followed by that
+# part's bar rows (collapsible via row-hiding, not a separate widget) - so
+# the sequencer for a part always sits right under that part's own row
+# instead of in one block at the end. Only "Bar" is a real dedicated column
+# (shared with the step columns); Mute/Solo/Part/Sample/Copy/Paste have no
+# columns of their own - they live in one widget that spans the entire row,
+# only on the info row, so the step grid on bar rows can start flush at the
+# left edge (column 0) instead of being indented behind reserved columns
+# that are blank on every bar row anyway.
+SEQ_BAR_COL = 0
+SEQ_FIXED_COLUMNS = 1
+
+STEPS_MAX_STEPS = 32
+STEPS_MAX_BARS = 8
+STEPS_ROW_HEIGHT = 26
+# The info row packs in Mute/Solo/Part/Sample/Copy/Paste controls - taller
+# than a bar row so those controls have room to render clearly instead of
+# looking cramped.
+STEPS_INFO_ROW_HEIGHT = 34
+# Inline column-header row (Bar / step numbers), repeated directly above
+# each part's own bar rows - see _populate_steps - instead of relying on the
+# table's single sticky header, which only ever sits above the first row.
+STEPS_COLHEADER_ROW_HEIGHT = 20
+STEPS_SPACER_ROW_HEIGHT = 6
+STEPS_GROUP_SIZE = 4  # visual divider every N step columns
+DIVIDER_COL_WIDTH = 6
+# Every step column is pinned to this exact width after layout, since
+# resizeColumnsToContents() would otherwise size 2-digit header labels
+# ("10".."16") a little wider than 1-digit ones, making the group dividers
+# look inconsistent from one group to the next.
+STEP_COL_WIDTH = 35
+
+# The sequencer table's step columns are interleaved with dedicated narrow
+# "divider" columns every STEPS_GROUP_SIZE steps, so the group separator is a
+# real gap between two columns rather than a border painted on a step button.
+# SEQ_STEP_TABLE_COL maps a step's position within a bar (0-based) to its
+# table column; SEQ_DIVIDER_TABLE_COLS maps each divider's table column to
+# the step index immediately before it (used to hide dividers past the
+# pattern's current Last Step).
+_seq_column_plan = []
+for _s in range(STEPS_MAX_STEPS):
+    _seq_column_plan.append(("step", _s))
+    if (_s + 1) % STEPS_GROUP_SIZE == 0 and (_s + 1) < STEPS_MAX_STEPS:
+        _seq_column_plan.append(("divider", _s))
+SEQ_STEP_TABLE_COL = {s: SEQ_FIXED_COLUMNS + i for i, (kind, s) in enumerate(_seq_column_plan) if kind == "step"}
+SEQ_DIVIDER_TABLE_COLS = [(SEQ_FIXED_COLUMNS + i, s) for i, (kind, s) in enumerate(_seq_column_plan) if kind == "divider"]
+SEQ_TOTAL_COLUMNS = SEQ_FIXED_COLUMNS + len(_seq_column_plan)
+
+STEP_DATA_CAPACITY = 128  # bits/bytes available in sequence_data / sequence_data_gate
+PARTS_SAMPLE_COL = 1  # index of the "Sample" column in PART_FIELD_SPECS
+PARTS_LABEL_COL = 0  # index of the "Part" column in PART_FIELD_SPECS
+
+# Wide enough to show the longest part label ("Keyboard1"/"Keyboard2") and a
+# typical sample name without the user having to manually drag the column,
+# used both on the Steps grid and the Parts table.
+PART_LABEL_COL_WIDTH = 130
+SAMPLE_COL_WIDTH = 220
+
+STEP_ON_COLOR = ACCENT
+MUTE_ON_COLOR = "#e5484d"
+SOLO_ON_COLOR = "#f5c451"
+PLAYHEAD_COLOR = "#ffd166"
 
 
 class PatternTable(QTableWidget):
@@ -143,6 +217,18 @@ class TabPatterns(QWidget):
         self._part_rows = []
         self._clipboard_pattern_bytes = None
         self._clipboard_pattern_label = None
+        self._step_rows = []
+        self._step_groups = []
+        self._step_buttons = {}
+        self._part_sequencer_expanded = {}
+        self._step_clipboard = None
+        self._solo_bits = set()
+        self._pre_solo_mute_status = None
+        self._sequencer_engine = SequencerPlaybackEngine()
+        self._playhead_step = None
+        self._playhead_timer = QTimer(self)
+        self._playhead_timer.setInterval(40)
+        self._playhead_timer.timeout.connect(self._update_playhead)
         self._setup_ui()
 
     def _setup_ui(self):
@@ -219,6 +305,7 @@ class TabPatterns(QWidget):
 
         self._pattern_length = QComboBox()
         self._pattern_length.addItems([f"{i+1}" for i in range(8)])
+        self._pattern_length.currentIndexChanged.connect(self._on_pattern_length_changed)
         editor_layout.addRow("Pattern Length:", self._pattern_length)
 
         self._beat_combo = QComboBox()
@@ -231,9 +318,12 @@ class TabPatterns(QWidget):
 
         self._last_step_combo = QComboBox()
         self._last_step_combo.addItems([str(i+1) for i in range(32)])
+        self._last_step_combo.currentIndexChanged.connect(self._on_last_step_changed)
         editor_layout.addRow("Last Step:", self._last_step_combo)
 
         self._right_tabs.addTab(editor_widget, "Pattern Editor")
+
+        self._right_tabs.addTab(self._setup_steps_tab(), "Steps")
 
         fx_widget = QWidget()
         fx_layout = QFormLayout(fx_widget)
@@ -294,6 +384,673 @@ class TabPatterns(QWidget):
         splitter.addWidget(self._right_tabs)
         splitter.setSizes([300, 900])
 
+    def _setup_steps_tab(self):
+        steps_widget = QWidget()
+        steps_layout = QVBoxLayout(steps_widget)
+        steps_layout.setContentsMargins(16, 16, 16, 16)
+
+        hint = QLabel(
+            "Click a step to toggle it. Each part's sequencer shows one row per bar of the "
+            "pattern's Length (1-8)."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet(f"color: {TEXT_DIM}; font-size: 11px;")
+        steps_layout.addWidget(hint)
+
+        toggle_layout = QHBoxLayout()
+        self._play_btn = QPushButton()
+        self._play_btn.setCheckable(True)
+        self._style_play_button(False)
+        self._play_btn.toggled.connect(self._on_play_toggled)
+        toggle_layout.addWidget(self._play_btn)
+        toggle_layout.addSpacing(10)
+        self._sequencer_toggle_btn = QPushButton("Collapse All")
+        self._sequencer_toggle_btn.setCheckable(True)
+        self._sequencer_toggle_btn.setChecked(True)
+        self._sequencer_toggle_btn.toggled.connect(self._on_sequencer_toggle)
+        toggle_layout.addWidget(self._sequencer_toggle_btn)
+        toggle_layout.addStretch(1)
+        steps_layout.addLayout(toggle_layout)
+
+        # Sits flush against the table's top edge so it reads as that table's
+        # header - a real QTableWidget header can't be reused here since it
+        # only ever labels plain columns, not the info row's mix of buttons/
+        # combo/label, so this mirrors the info row's own widget layout
+        # (same widths/spacing) with plain labels instead of controls.
+        steps_layout.addWidget(self._build_steps_table_header())
+
+        self._sequencer_table = QTableWidget()
+        self._sequencer_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self._sequencer_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._sequencer_table.verticalHeader().setVisible(False)
+        self._sequencer_table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        self._sequencer_table.verticalHeader().setDefaultSectionSize(STEPS_ROW_HEIGHT)
+        self._sequencer_table.verticalHeader().setMinimumSectionSize(1)
+        # Lets the group-divider columns be narrower than Qt's default
+        # minimum column width, so they read as a thin line, not a cell.
+        self._sequencer_table.horizontalHeader().setMinimumSectionSize(1)
+        self._sequencer_table.setAlternatingRowColors(False)
+        self._sequencer_table.setColumnCount(SEQ_TOTAL_COLUMNS)
+        # The table's own (single, sticky-at-top) header only ever sits above
+        # the very first row - the first part's info row, not its actual
+        # step grid - so it can't label "the sequencer" for every part.
+        # Instead each part gets its own inline column-header row (built in
+        # _populate_steps) placed directly above that part's own bar rows,
+        # and the table's built-in header is hidden entirely.
+        self._sequencer_table.horizontalHeader().setVisible(False)
+        steps_layout.addWidget(self._sequencer_table)
+
+        return steps_widget
+
+    def _build_steps_table_header(self):
+        """A static label row matching the info row's own widget widths
+        (mute/solo/part/sample/copy/paste/collapse), styled like a table
+        header and pinned directly above the sequencer table - explains
+        those controls once, in the one place a real QTableWidget header
+        can't reach since the info row is a single widget spanning every
+        column, not one value per column."""
+        header = QWidget()
+        header.setStyleSheet(f"background-color: {BG_PANEL};")
+        layout = QHBoxLayout(header)
+        layout.setContentsMargins(4, 2, 4, 2)
+        layout.setSpacing(6)
+
+        def label(text, width=None, min_width=None, font_size=11):
+            lbl = QLabel(text)
+            lbl.setStyleSheet(f"color: {TEXT_DIM}; font-size: {font_size}px; font-weight: 600;")
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            if width is not None:
+                lbl.setFixedWidth(width)
+            if min_width is not None:
+                lbl.setMinimumWidth(min_width)
+            return lbl
+
+        # The narrow labels (Mute/Solo/Copy/Paste) sit above 30px-wide
+        # buttons - too tight for their full word at the row's normal font
+        # size, so those specific labels drop a size to avoid clipping.
+        layout.addWidget(label("Mute", 30, font_size=9))
+        layout.addWidget(label("Solo", 30, font_size=9))
+        layout.addWidget(label("Part", PART_LABEL_COL_WIDTH))
+        layout.addWidget(label("Sample", min_width=SAMPLE_COL_WIDTH - 10))
+        layout.addWidget(label("Copy", 30, font_size=9))
+        layout.addWidget(label("Paste", 34, font_size=9))
+        layout.addStretch(1)
+        layout.addWidget(label("Seq", 26, font_size=9))
+        return header
+
+    def _sequencer_header_labels(self):
+        labels = ["Bar"] + [""] * len(_seq_column_plan)
+        for i, (kind, s) in enumerate(_seq_column_plan):
+            if kind == "step":
+                labels[SEQ_FIXED_COLUMNS + i] = str(s + 1)
+        return labels
+
+    def _on_sequencer_toggle(self, checked):
+        self._sequencer_toggle_btn.setText("Collapse All" if checked else "Expand All")
+        for part_idx in range(len(self._step_groups)):
+            self._set_part_sequencer_expanded(part_idx, checked)
+
+    def _set_part_sequencer_expanded(self, part_idx, expanded):
+        self._part_sequencer_expanded[part_idx] = expanded
+        group = self._step_groups[part_idx]
+        self._sequencer_table.setRowHidden(group["header_row"], not expanded)
+        for bar in range(group["num_bars"]):
+            self._sequencer_table.setRowHidden(group["seq_start"] + bar, not expanded)
+        btn = group.get("collapse_btn")
+        if btn:
+            btn.blockSignals(True)
+            btn.setChecked(expanded)
+            btn.blockSignals(False)
+            self._style_collapse_button(btn, expanded)
+
+    def _style_collapse_button(self, btn, expanded):
+        btn.setIcon(icons.icon("chevron-down" if expanded else "chevron-right"))
+        btn.setToolTip("Collapse this part's sequencer" if expanded else "Expand this part's sequencer")
+
+    def _style_play_button(self, playing):
+        self._play_btn.setIcon(icons.icon("pause" if playing else "play"))
+        self._play_btn.setText("Pause" if playing else "Play")
+        self._play_btn.setToolTip(
+            "Pause the sequencer" if playing else
+            "Play the pattern - uses each part's Level/Pan/Pitch/EG Time/Start Point/Filter and the pattern's BPM"
+        )
+
+    def _on_play_toggled(self, checked):
+        self._style_play_button(checked)
+        if checked:
+            if self._sequencer_engine.is_paused():
+                self._sequencer_engine.resume()
+            else:
+                self._start_sequencer_playback()
+            if self._play_btn.isChecked():
+                self._playhead_timer.start()
+        else:
+            self._sequencer_engine.pause()
+            self._playhead_timer.stop()
+
+    def _start_sequencer_playback(self):
+        if self._current_pattern is None or self._esx is None:
+            self._play_btn.setChecked(False)
+            return
+        ok = self._sequencer_engine.play(self._current_pattern, self._esx.samples)
+        if not ok:
+            self._play_btn.setChecked(False)
+            QMessageBox.warning(
+                self, "Playback",
+                "Audio playback isn't available (sounddevice not installed or no output device)."
+            )
+
+    def _stop_sequencer_playback(self):
+        self._sequencer_engine.stop()
+        self._playhead_timer.stop()
+        self._clear_playhead()
+        if self._play_btn.isChecked():
+            self._play_btn.blockSignals(True)
+            self._play_btn.setChecked(False)
+            self._play_btn.blockSignals(False)
+            self._style_play_button(False)
+
+    def _refresh_sequencer_playback(self):
+        """Hot-swaps the loop buffer if the sequencer is currently playing
+        or paused, so mute/solo/step edits are heard right away instead of
+        only after the next Play press. No-ops if it isn't running. The
+        re-render runs on a background thread (update_buffer_async) since a
+        Stretch part's WSOLA render can take a second or more - doing it
+        synchronously here would freeze the UI on every step/mute click."""
+        if self._current_pattern is not None and self._esx is not None:
+            self._sequencer_engine.update_buffer_async(self._current_pattern, self._esx.samples)
+
+    def _clear_playhead(self):
+        """Restores the previously-highlighted playhead step button (if any)
+        to its normal on/off style."""
+        if self._playhead_step is not None:
+            for part_idx in range(len(self._step_rows)):
+                btn = self._step_buttons.get((part_idx, self._playhead_step))
+                if btn is not None:
+                    self._style_step_button(btn, btn.isChecked())
+            self._playhead_step = None
+
+    def _update_playhead(self):
+        """Polled by self._playhead_timer while the sequencer is playing -
+        highlights the step column currently sounding across every part
+        row, so the Steps grid visibly follows along with playback."""
+        step = self._sequencer_engine.get_playback_step()
+        if step == self._playhead_step:
+            return
+        self._clear_playhead()
+        if step is None:
+            return
+        for part_idx in range(len(self._step_rows)):
+            btn = self._step_buttons.get((part_idx, step))
+            if btn is not None:
+                self._style_step_button(btn, btn.isChecked(), playhead=True)
+        self._playhead_step = step
+
+    def _build_step_rows(self, pattern):
+        """One group per part in mute_status bit order, skipping Accent (bit 9
+        stays under the app's control but has no row in the Steps grid)."""
+        rows = []
+        bit = 0
+        for i, part in enumerate(pattern.drum_parts):
+            rows.append({"label": PATTERN_PART_NAMES[i], "part": part, "bit": bit, "kind": "bits"})
+            bit += 1
+        bit += 1  # Accent
+        for i, part in enumerate(pattern.keyboard_parts):
+            rows.append({"label": PATTERN_PART_NAMES[10 + i], "part": part, "bit": bit, "kind": "gate"})
+            bit += 1
+        for i, part in enumerate(pattern.stretch_slice_parts):
+            rows.append({"label": PATTERN_PART_NAMES[12 + i], "part": part, "bit": bit, "kind": "bits"})
+            bit += 1
+        rows.append({"label": PATTERN_PART_NAMES[15], "part": pattern.audio_in_part, "bit": bit, "kind": "bits"})
+        return rows
+
+    def _current_last_step_count(self):
+        return self._last_step_combo.currentIndex() + 1
+
+    def _current_pattern_length_bars(self):
+        return self._pattern_length.currentIndex() + 1
+
+    def _on_last_step_changed(self, index):
+        if self._current_pattern is not None:
+            self._stop_sequencer_playback()
+            self._populate_steps(self._current_pattern)
+
+    def _on_pattern_length_changed(self, index):
+        if self._current_pattern is not None:
+            self._stop_sequencer_playback()
+            self._populate_steps(self._current_pattern)
+
+    def _populate_steps(self, pattern):
+        self._step_rows = self._build_step_rows(pattern)
+        self._step_clipboard = None
+        self._solo_bits = set()
+        self._pre_solo_mute_status = None
+        sample_names = self._get_sample_names_list()
+
+        num_bars = self._current_pattern_length_bars()
+        steps_per_bar = self._current_last_step_count()
+        num_parts = len(self._step_rows)
+
+        self._step_groups = []
+        self._step_buttons = {}
+        self._playhead_step = None
+        # One info row per part, followed by an inline column-header row
+        # (Bar / step numbers) and then that part's bar rows (collapsed/
+        # expanded together via row-hiding - see _set_part_sequencer_expanded),
+        # plus one thin spacer row between parts. A row index that held a
+        # cell widget (e.g. a Mute button) in a previous call can be reused
+        # here for a blank filler cell - and setItem() doesn't clear a
+        # pre-existing cell widget - so the table is fully reset first
+        # rather than just re-sized.
+        self._sequencer_table.setRowCount(0)
+        self._sequencer_table.setRowCount(num_parts * (2 + num_bars) + num_parts - 1)
+        default_expanded = self._sequencer_toggle_btn.isChecked()
+
+        bold_font = QFont()
+        bold_font.setBold(True)
+
+        row_cursor = 0
+        for info in self._step_rows:
+            part = info["part"]
+            part_idx = len(self._step_groups)
+            shade = BG_FIELD_HOVER if part_idx % 2 else BG_FIELD
+
+            info_row = row_cursor
+            header_row = info_row + 1
+            expanded = self._part_sequencer_expanded.get(part_idx, default_expanded)
+            self._part_sequencer_expanded[part_idx] = expanded
+            self._step_groups.append({
+                "info_row": info_row, "header_row": header_row,
+                "seq_start": header_row + 1, "num_bars": num_bars,
+            })
+            self._sequencer_table.setRowHeight(info_row, STEPS_INFO_ROW_HEIGHT)
+
+            mute_btn = QPushButton("M")
+            mute_btn.setCheckable(True)
+            mute_btn.setFixedSize(30, 28)
+            mute_btn.setChecked(self._mute_bit(pattern, info["bit"]))
+            self._style_mute_button(mute_btn)
+            mute_btn.toggled.connect(lambda checked, i=part_idx: self._on_mute_toggled(i, checked))
+
+            solo_btn = QPushButton("S")
+            solo_btn.setCheckable(True)
+            solo_btn.setFixedSize(30, 28)
+            solo_btn.setChecked(False)
+            self._style_solo_button(solo_btn)
+            solo_btn.toggled.connect(lambda checked, i=part_idx: self._on_solo_toggled(i, checked))
+
+            part_label = QLabel(info["label"])
+            part_label.setFont(bold_font)
+            part_label.setToolTip(info["label"])
+            part_label.setFixedWidth(PART_LABEL_COL_WIDTH)
+
+            sample_combo = None
+            # No dedicated Mute/Solo/Part/Sample/Copy/Paste columns - this
+            # cell spans the whole row (the same columns the step grid uses
+            # below) instead, since that space is otherwise blank on the
+            # info row anyway and reserving it as real columns pushed the
+            # step grid on bar rows out of alignment with the left edge.
+            info_cell = QWidget()
+            info_cell_layout = QHBoxLayout(info_cell)
+            info_cell_layout.setContentsMargins(4, 0, 4, 0)
+            info_cell_layout.setSpacing(6)
+            info_cell_layout.addWidget(mute_btn)
+            info_cell_layout.addWidget(solo_btn)
+            info_cell_layout.addWidget(part_label)
+            if hasattr(part, "sample_pointer"):
+                idx = part.sample_pointer + 1 if part.sample_pointer >= 0 else 0
+                sample_combo = self._make_sample_combo(sample_names, idx)
+                sample_combo.activated.connect(
+                    lambda _, p=part, c=sample_combo: self._on_steps_sample_activated(p, c)
+                )
+                info_cell_layout.addWidget(sample_combo)
+            else:
+                info_cell_layout.addWidget(QLabel("-"))
+
+            copy_btn = QPushButton(icons.icon("copy"), "")
+            copy_btn.setFixedSize(30, 28)
+            copy_btn.setToolTip("Copy steps (all bars)")
+            copy_btn.clicked.connect(lambda _, i=part_idx: self._copy_steps(i))
+            info_cell_layout.addWidget(copy_btn)
+
+            paste_btn = QPushButton(icons.icon("paste"), "")
+            paste_btn.setFixedSize(30, 28)
+            paste_btn.setToolTip("Paste steps (all bars)")
+            paste_btn.setEnabled(False)
+            paste_btn.clicked.connect(lambda _, i=part_idx: self._paste_steps(i))
+            info_cell_layout.addWidget(paste_btn)
+            info_cell_layout.addStretch(1)
+
+            # Sits at the far right of the row so it reads as "collapse
+            # just this part", separate from the "Collapse/Expand All"
+            # button above the whole table.
+            collapse_btn = QPushButton("")
+            collapse_btn.setCheckable(True)
+            collapse_btn.setFixedSize(26, 28)
+            collapse_btn.setChecked(expanded)
+            self._style_collapse_button(collapse_btn, expanded)
+            collapse_btn.toggled.connect(lambda checked, i=part_idx: self._set_part_sequencer_expanded(i, checked))
+            info_cell_layout.addWidget(collapse_btn)
+
+            self._sequencer_table.setCellWidget(info_row, 0, info_cell)
+            self._sequencer_table.setSpan(info_row, 0, 1, SEQ_TOTAL_COLUMNS)
+
+            self._step_groups[-1].update({
+                "mute_btn": mute_btn, "solo_btn": solo_btn, "sample_combo": sample_combo,
+                "copy_btn": copy_btn, "paste_btn": paste_btn, "collapse_btn": collapse_btn,
+            })
+
+            # Inline column-header row - repeats "Bar" / step-number labels
+            # directly above this part's own bar rows, since the table's
+            # single sticky header (now hidden) could only ever sit above
+            # the very first row in the whole table.
+            self._sequencer_table.setRowHeight(header_row, STEPS_COLHEADER_ROW_HEIGHT)
+            for col_idx, label in enumerate(self._sequencer_header_labels()):
+                header_item = QTableWidgetItem(label)
+                header_item.setFlags(Qt.ItemFlag.NoItemFlags)
+                header_item.setTextAlignment(int(Qt.AlignmentFlag.AlignCenter))
+                header_item.setBackground(QColor(BG_PANEL))
+                header_item.setForeground(QColor(TEXT_DIM))
+                header_item.setFont(bold_font)
+                self._sequencer_table.setItem(header_row, col_idx, header_item)
+            self._sequencer_table.setRowHidden(header_row, not expanded)
+
+            row_cursor += 2
+            seq_group_start = row_cursor
+
+            for bar in range(num_bars):
+                row = seq_group_start + bar
+                self._set_readonly_item(row, SEQ_BAR_COL, str(bar + 1), table=self._sequencer_table,
+                                         alignment=Qt.AlignmentFlag.AlignCenter)
+                bar_item = self._sequencer_table.item(row, SEQ_BAR_COL)
+                bar_item.setBackground(QColor(shade))
+                bar_item.setForeground(QColor(TEXT_DIM))
+                self._sequencer_table.setRowHidden(row, not expanded)
+                for col in range(steps_per_bar):
+                    global_step = bar * steps_per_bar + col
+                    if global_step >= STEP_DATA_CAPACITY:
+                        break
+                    on = self._get_step_state(info, global_step)
+                    step_btn = QPushButton("")
+                    step_btn.setCheckable(True)
+                    step_btn.setChecked(on)
+                    step_btn.setFixedSize(22, 24)
+                    self._style_step_button(step_btn, on)
+                    step_btn.toggled.connect(
+                        lambda checked, r=row, c=col, g=global_step: self._on_step_toggled(r, c, g, checked)
+                    )
+                    self._step_buttons[(part_idx, global_step)] = step_btn
+                    # Wrapped so the fixed-size button is centered in the step
+                    # column instead of hugging the cell's top-left corner
+                    # when the column is wider than the button.
+                    step_cell = QWidget()
+                    step_cell_layout = QHBoxLayout(step_cell)
+                    step_cell_layout.setContentsMargins(0, 0, 0, 0)
+                    step_cell_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    step_cell_layout.addWidget(step_btn)
+                    self._sequencer_table.setCellWidget(row, SEQ_STEP_TABLE_COL[col], step_cell)
+
+                for divider_col, boundary_step in SEQ_DIVIDER_TABLE_COLS:
+                    if boundary_step + 1 >= steps_per_bar:
+                        continue
+                    divider_item = QTableWidgetItem("")
+                    divider_item.setFlags(Qt.ItemFlag.NoItemFlags)
+                    divider_item.setBackground(QColor(BORDER_LIGHT))
+                    self._sequencer_table.setItem(row, divider_col, divider_item)
+
+            row_cursor = seq_group_start + num_bars
+            if part_idx < num_parts - 1:
+                spacer_row = row_cursor
+                self._sequencer_table.setRowHeight(spacer_row, STEPS_SPACER_ROW_HEIGHT)
+                spacer_item = QTableWidgetItem("")
+                spacer_item.setFlags(Qt.ItemFlag.NoItemFlags)
+                spacer_item.setBackground(QColor(BORDER))
+                self._sequencer_table.setItem(spacer_row, 0, spacer_item)
+                self._sequencer_table.setSpan(spacer_row, 0, 1, SEQ_TOTAL_COLUMNS)
+                row_cursor += 1
+
+        self._apply_steps_column_visibility(steps_per_bar)
+        self._refresh_paste_buttons()
+        self._sequencer_table.resizeColumnsToContents()
+        self._sequencer_table.setColumnWidth(SEQ_BAR_COL, 40)
+        for divider_col, _ in SEQ_DIVIDER_TABLE_COLS:
+            self._sequencer_table.setColumnWidth(divider_col, DIVIDER_COL_WIDTH)
+        for step in range(STEPS_MAX_STEPS):
+            self._sequencer_table.setColumnWidth(SEQ_STEP_TABLE_COL[step], STEP_COL_WIDTH)
+
+    def _apply_steps_column_visibility(self, num_steps):
+        for step in range(STEPS_MAX_STEPS):
+            self._sequencer_table.setColumnHidden(SEQ_STEP_TABLE_COL[step], step >= num_steps)
+        for divider_col, boundary_step in SEQ_DIVIDER_TABLE_COLS:
+            self._sequencer_table.setColumnHidden(divider_col, boundary_step + 1 >= num_steps)
+
+    def _make_sample_combo(self, sample_names, current_index):
+        """A closed dropdown (not a text field) whose popup has a built-in
+        search box above the scrollable sample list."""
+        combo = SearchableComboBox()
+        combo.setMinimumWidth(SAMPLE_COL_WIDTH - 10)
+        combo.add_items_with_data((name, i) for i, name in enumerate(sample_names))
+        combo.set_current_data(max(0, min(current_index, len(sample_names) - 1)))
+        combo.setToolTip(combo.currentText())
+        combo.currentTextChanged.connect(combo.setToolTip)
+        return combo
+
+    def _steps_sample_combo_for_part(self, part):
+        for i, info in enumerate(self._step_rows):
+            if info["part"] is part:
+                return self._step_groups[i].get("sample_combo")
+        return None
+
+    def _parts_row_for_part(self, part):
+        for i, (_, p) in enumerate(self._part_rows):
+            if p is part:
+                return i
+        return -1
+
+    def _sync_combo(self, combo, real_index):
+        if combo and combo.currentData() != real_index:
+            combo.blockSignals(True)
+            combo.set_current_data(real_index)
+            combo.blockSignals(False)
+
+    def _on_parts_sample_activated(self, part, combo):
+        real_index = combo.currentData()
+        if real_index is not None:
+            self._on_parts_sample_changed(part, real_index)
+
+    def _on_steps_sample_activated(self, part, combo):
+        real_index = combo.currentData()
+        if real_index is not None:
+            self._on_steps_sample_changed(part, real_index)
+
+    def _on_parts_sample_changed(self, part, index):
+        part.sample_pointer = index - 1
+        self._sync_combo(self._steps_sample_combo_for_part(part), index)
+
+    def _on_steps_sample_changed(self, part, index):
+        part.sample_pointer = index - 1
+        row = self._parts_row_for_part(part)
+        if row >= 0:
+            self._sync_combo(self._parts_table.cellWidget(row, PARTS_SAMPLE_COL), index)
+
+    def _get_step_state(self, info, step):
+        part = info["part"]
+        if info["kind"] == "bits":
+            data = part.sequence_data.data
+            byte_i, bit_i = divmod(step, 8)
+            return byte_i < len(data) and bool(data[byte_i] & (1 << bit_i))
+        data = part.sequence_data_gate.data
+        return step < len(data) and data[step] != 0
+
+    def _set_step_state(self, info, step, on):
+        part = info["part"]
+        if info["kind"] == "bits":
+            data = part.sequence_data.data
+            byte_i, bit_i = divmod(step, 8)
+            if byte_i >= len(data):
+                return
+            if on:
+                data[byte_i] |= (1 << bit_i)
+            else:
+                data[byte_i] &= ~(1 << bit_i) & 0xFF
+        else:
+            data = part.sequence_data_gate.data
+            if step < len(data):
+                data[step] = 1 if on else 0
+
+    def _step_button_at(self, row, col):
+        """Step buttons are wrapped in a centering container widget, so the
+        cell widget itself isn't the button - look inside it."""
+        cell = self._sequencer_table.cellWidget(row, SEQ_STEP_TABLE_COL[col])
+        return cell.findChild(QPushButton) if cell else None
+
+    def _on_step_toggled(self, row, col, global_step, checked):
+        info = self._step_rows[self._part_index_for_table_row(row)]
+        self._set_step_state(info, global_step, checked)
+        btn = self._step_button_at(row, col)
+        if btn:
+            self._style_step_button(btn, checked)
+        self._refresh_sequencer_playback()
+
+    def _part_index_for_table_row(self, table_row):
+        for i, group in enumerate(self._step_groups):
+            if group["seq_start"] <= table_row < group["seq_start"] + group["num_bars"]:
+                return i
+        return -1
+
+    def _style_step_button(self, btn, on, playhead=False):
+        bg = STEP_ON_COLOR if on else BG_FIELD
+        border = STEP_ON_COLOR if on else BORDER
+        border_width = 1
+        if playhead:
+            border = PLAYHEAD_COLOR
+            border_width = 2
+        btn.setStyleSheet(
+            f"QPushButton {{ background-color: {bg}; border: {border_width}px solid {border}; border-radius: 3px; }}"
+            f"QPushButton:hover {{ border-color: {STEP_ON_COLOR}; }}"
+        )
+
+    def _style_mute_button(self, btn):
+        bg = MUTE_ON_COLOR if btn.isChecked() else BG_FIELD
+        btn.setStyleSheet(
+            f"QPushButton {{ background-color: {bg}; border: 1px solid {BORDER}; "
+            f"border-radius: 4px; font-weight: 600; }}"
+        )
+
+    def _style_solo_button(self, btn):
+        bg = SOLO_ON_COLOR if btn.isChecked() else BG_FIELD
+        color = "#0b0c0d" if btn.isChecked() else None
+        style = (
+            f"QPushButton {{ background-color: {bg}; border: 1px solid {BORDER}; "
+            f"border-radius: 4px; font-weight: 600;"
+        )
+        if color:
+            style += f" color: {color};"
+        style += " }"
+        btn.setStyleSheet(style)
+
+    def _mute_bit(self, pattern, bit):
+        return bool(pattern.mute_status & (1 << bit))
+
+    def _set_mute_bit(self, pattern, bit, on):
+        if on:
+            pattern.mute_status |= (1 << bit)
+        else:
+            pattern.mute_status &= ~(1 << bit) & 0xFFFF
+
+    def _on_mute_toggled(self, part_idx, checked):
+        if self._current_pattern is None:
+            return
+        info = self._step_rows[part_idx]
+        self._set_mute_bit(self._current_pattern, info["bit"], checked)
+        self._style_mute_button(self._step_groups[part_idx]["mute_btn"])
+        self._refresh_sequencer_playback()
+
+    def _on_solo_toggled(self, part_idx, checked):
+        if self._current_pattern is None:
+            return
+        pattern = self._current_pattern
+        bit = self._step_rows[part_idx]["bit"]
+
+        if checked:
+            if not self._solo_bits:
+                self._pre_solo_mute_status = pattern.mute_status
+            # Only one part may be soloed at a time - uncheck any other solo button.
+            for other_idx, other_info in enumerate(self._step_rows):
+                if other_idx != part_idx and other_info["bit"] in self._solo_bits:
+                    other_btn = self._step_groups[other_idx]["solo_btn"]
+                    other_btn.blockSignals(True)
+                    other_btn.setChecked(False)
+                    other_btn.blockSignals(False)
+                    self._style_solo_button(other_btn)
+            self._solo_bits = {bit}
+        else:
+            self._solo_bits.discard(bit)
+
+        if self._solo_bits:
+            for info in self._step_rows:
+                self._set_mute_bit(pattern, info["bit"], info["bit"] not in self._solo_bits)
+        elif self._pre_solo_mute_status is not None:
+            pattern.mute_status = self._pre_solo_mute_status
+            self._pre_solo_mute_status = None
+
+        self._refresh_mute_buttons()
+        self._style_solo_button(self._step_groups[part_idx]["solo_btn"])
+        self._refresh_sequencer_playback()
+
+    def _refresh_mute_buttons(self):
+        for part_idx, info in enumerate(self._step_rows):
+            btn = self._step_groups[part_idx]["mute_btn"]
+            btn.blockSignals(True)
+            btn.setChecked(self._mute_bit(self._current_pattern, info["bit"]))
+            btn.blockSignals(False)
+            self._style_mute_button(btn)
+
+    def _copy_steps(self, part_idx):
+        info = self._step_rows[part_idx]
+        part = info["part"]
+        if info["kind"] == "bits":
+            self._step_clipboard = ("bits", bytearray(part.sequence_data.data))
+        else:
+            self._step_clipboard = ("gate", bytearray(part.sequence_data_gate.data))
+        self._refresh_paste_buttons()
+
+    def _paste_steps(self, part_idx):
+        if self._step_clipboard is None:
+            return
+        kind, data = self._step_clipboard
+        info = self._step_rows[part_idx]
+        if info["kind"] != kind:
+            return
+        target = info["part"].sequence_data.data if kind == "bits" else info["part"].sequence_data_gate.data
+        target[:] = data
+        self._refresh_step_buttons(part_idx)
+        self._refresh_sequencer_playback()
+
+    def _refresh_step_buttons(self, part_idx):
+        info = self._step_rows[part_idx]
+        group = self._step_groups[part_idx]
+        steps_per_bar = self._current_last_step_count()
+        for bar in range(group["num_bars"]):
+            row = group["seq_start"] + bar
+            for col in range(steps_per_bar):
+                global_step = bar * steps_per_bar + col
+                if global_step >= STEP_DATA_CAPACITY:
+                    break
+                btn = self._step_button_at(row, col)
+                if not btn:
+                    continue
+                on = self._get_step_state(info, global_step)
+                btn.blockSignals(True)
+                btn.setChecked(on)
+                btn.blockSignals(False)
+                self._style_step_button(btn, on)
+
+    def _refresh_paste_buttons(self):
+        kind = self._step_clipboard[0] if self._step_clipboard else None
+        for part_idx, info in enumerate(self._step_rows):
+            self._step_groups[part_idx]["paste_btn"].setEnabled(kind is not None and info["kind"] == kind)
+
     def update_data(self, esx_file):
         self._esx = esx_file
         patterns = esx_file.patterns
@@ -322,6 +1079,7 @@ class TabPatterns(QWidget):
     def _on_pattern_selected(self):
         if self._esx is None:
             return
+        self._stop_sequencer_playback()
         # Commit any pending edits still sitting in the editor fields for the
         # previously selected pattern before we overwrite them below.
         if self._current_pattern is not None and 0 <= self._current_row < len(self._esx.patterns):
@@ -514,6 +1272,7 @@ class TabPatterns(QWidget):
             self._fx_motion_status[i].setValue(max(0, min(127, fx.motion_sequence_status)))
 
         self._populate_parts(pattern)
+        self._populate_steps(pattern)
 
         self._motion_table.setRowCount(len(pattern.motion_parameters))
         for i, mo in enumerate(pattern.motion_parameters):
@@ -529,12 +1288,14 @@ class TabPatterns(QWidget):
             for col, (_, attr, kind, enum_cls) in enumerate(PART_FIELD_SPECS):
                 if kind == "label":
                     self._set_readonly_item(row, col, label)
+                    self._parts_table.item(row, col).setToolTip(label)
                 elif kind == "sample":
                     if hasattr(part, attr):
-                        combo = QComboBox()
-                        combo.addItems(sample_names)
                         idx = part.sample_pointer + 1 if part.sample_pointer >= 0 else 0
-                        combo.setCurrentIndex(max(0, min(idx, len(sample_names) - 1)))
+                        combo = self._make_sample_combo(sample_names, idx)
+                        combo.activated.connect(
+                            lambda _, p=part, c=combo: self._on_parts_sample_activated(p, c)
+                        )
                         self._parts_table.setCellWidget(row, col, combo)
                     else:
                         self._set_readonly_item(row, col, "")
@@ -551,6 +1312,8 @@ class TabPatterns(QWidget):
                         self._set_readonly_item(row, col, "")
 
         self._parts_table.resizeColumnsToContents()
+        self._parts_table.setColumnWidth(PARTS_LABEL_COL, PART_LABEL_COL_WIDTH)
+        self._parts_table.setColumnWidth(PARTS_SAMPLE_COL, SAMPLE_COL_WIDTH)
 
     def _build_part_rows(self, pattern):
         rows = []
@@ -569,10 +1332,13 @@ class TabPatterns(QWidget):
             return "reserved_bits"
         return attr if hasattr(part, attr) else None
 
-    def _set_readonly_item(self, row, col, text):
+    def _set_readonly_item(self, row, col, text, table=None, alignment=None):
+        table = table if table is not None else self._parts_table
         item = QTableWidgetItem(text)
         item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        self._parts_table.setItem(row, col, item)
+        if alignment is not None:
+            item.setTextAlignment(int(alignment))
+        table.setItem(row, col, item)
 
     def _set_editable_item(self, row, col, text):
         self._parts_table.setItem(row, col, QTableWidgetItem(text))
@@ -616,7 +1382,9 @@ class TabPatterns(QWidget):
                 if kind == "sample" and hasattr(part, attr):
                     combo = self._parts_table.cellWidget(row, col)
                     if combo:
-                        part.sample_pointer = combo.currentIndex() - 1
+                        real_index = combo.currentData()
+                        if real_index is not None:
+                            part.sample_pointer = real_index - 1
                 elif kind == "enum" and hasattr(part, attr):
                     combo = self._parts_table.cellWidget(row, col)
                     if combo:

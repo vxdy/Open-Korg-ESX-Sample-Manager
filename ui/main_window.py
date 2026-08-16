@@ -7,6 +7,7 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QSettings
 from PyQt6.QtGui import QAction
 
 from esx.esx_file import EsxFile
+from esx.app_paths import get_blank_template_path
 from ui.tab_info import TabInfo
 from ui.tab_global import TabGlobal
 from ui.tab_patterns import TabPatterns
@@ -101,6 +102,11 @@ class MainWindow(QMainWindow):
         """Create actions once so the menu bar and the toolbar can share
         the same QAction instances (single source of truth for shortcuts,
         enabled state, etc.)."""
+        self.new_action = QAction(icons.icon("file"), "New", self)
+        self.new_action.setShortcut("Ctrl+N")
+        self.new_action.setToolTip("Start from the blank template (Ctrl+N)")
+        self.new_action.triggered.connect(self.new_file)
+
         self.open_action = QAction(icons.icon("folder-open"), "Open...", self)
         self.open_action.setShortcut("Ctrl+O")
         self.open_action.setToolTip("Open an ESX file (Ctrl+O)")
@@ -129,6 +135,11 @@ class MainWindow(QMainWindow):
         self.import_as_mono_action.setChecked(True)
         self.import_as_mono_action.toggled.connect(self._on_import_as_mono_toggled)
 
+        self.import_with_plus12db_action = QAction("Import with +12dB", self)
+        self.import_with_plus12db_action.setCheckable(True)
+        self.import_with_plus12db_action.setChecked(False)
+        self.import_with_plus12db_action.toggled.connect(self._on_import_with_plus12db_toggled)
+
         self.delete_selected_samples_action = QAction(icons.icon("trash"), "Delete Selected Sample(s)", self)
         self.delete_selected_samples_action.triggered.connect(self._delete_selected_samples)
 
@@ -149,6 +160,7 @@ class MainWindow(QMainWindow):
         menubar = self.menuBar()
 
         file_menu = menubar.addMenu("File")
+        file_menu.addAction(self.new_action)
         file_menu.addAction(self.open_action)
         file_menu.addAction(self.save_action)
         file_menu.addAction(self.save_as_action)
@@ -158,6 +170,7 @@ class MainWindow(QMainWindow):
         samples_menu = menubar.addMenu("Samples")
         samples_menu.addAction(self.import_samples_action)
         samples_menu.addAction(self.import_as_mono_action)
+        samples_menu.addAction(self.import_with_plus12db_action)
         samples_menu.addSeparator()
         samples_menu.addAction(self.delete_selected_samples_action)
         samples_menu.addAction(self.delete_unused_samples_action)
@@ -212,6 +225,9 @@ class MainWindow(QMainWindow):
         self._status_file_label = QLabel("No file loaded")
         status.addWidget(self._status_file_label)
 
+    def new_file(self):
+        self._load_esx_file(get_blank_template_path())
+
     def open_file(self):
         path, _ = QFileDialog.getOpenFileName(
             self, "Open ESX File", "",
@@ -224,7 +240,7 @@ class MainWindow(QMainWindow):
         """Disable actions that would start a conflicting operation while a
         load/save is in flight, and show a busy cursor as extra feedback."""
         for action in (
-            self.open_action, self.save_action, self.save_as_action,
+            self.new_action, self.open_action, self.save_action, self.save_as_action,
             self.import_samples_action,
         ):
             action.setEnabled(not busy)
@@ -292,6 +308,8 @@ class MainWindow(QMainWindow):
             return
         self.tab_widget.setCurrentWidget(self.tab_patterns)
         self.tab_patterns.import_pattern_from_path(path)
+        self.tab_samples.update_data(self.esx_file)
+        self.tab_info.update_data(self.esx_file)
 
     def save_file(self):
         if self.esx_file is None:
@@ -357,6 +375,9 @@ class MainWindow(QMainWindow):
 
     def _on_import_as_mono_toggled(self, checked: bool):
         self.tab_samples.import_as_mono = checked
+
+    def _on_import_with_plus12db_toggled(self, checked: bool):
+        self.tab_samples.import_with_plus12db = checked
 
     def _delete_selected_samples(self):
         if self.esx_file is None:

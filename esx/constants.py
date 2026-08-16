@@ -80,7 +80,7 @@ class AmpEg(IntEnum):
 
 class ArpeggiatorControl(IntEnum):
     NORMAL = 0
-    LATCH = 1
+    REVERSE = 1
 
 
 class ArpeggiatorScale(IntEnum):
