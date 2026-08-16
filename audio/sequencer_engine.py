@@ -384,15 +384,48 @@ def _render_additive(part, kind, sample, sample_rate, steps, samples_per_step, l
     return buf
 
 
-def _render_parts(pattern, samples, sample_rate: int = ENGINE_SAMPLE_RATE):
+def _stretch_voice_cache_key(part, sample, samples_per_step):
+    """Every field render_stretch_voice's output actually depends on -
+    mute/solo and step (on/off) edits touch none of these, so keying a
+    cache on this tuple lets update_buffer_async skip WSOLA entirely for
+    Stretch parts that weren't the thing being edited."""
+    return (
+        id(sample), id(part), samples_per_step,
+        int(getattr(sample, "stretch_step", -1)),
+        int(getattr(part, "start_point", 0)),
+        int(getattr(part, "pitch", 64)),
+        int(getattr(part, "cutoff", 0)),
+        int(getattr(part, "resonance", 0)),
+        int(getattr(part, "filter_type", 0)),
+        int(getattr(part, "amp_eg", 0)),
+        int(getattr(part, "eg_time", 0)),
+        int(getattr(part, "level", 127)),
+        int(getattr(part, "pan", 64)),
+    )
+
+
+def _render_parts(pattern, samples, sample_rate: int = ENGINE_SAMPLE_RATE, voice_cache=None):
     """Computes the full (ungated) pattern mix once, along with enough
     per-part state to cheaply re-apply an unmute gate afterwards (see
     apply_mute_gate) without redoing the expensive part: a Stretch part's
     WSOLA render (render_stretch_voice) can take the better part of a
     second, and it's identical regardless of which steps end up gated, so
     it's computed here exactly once and the resulting `voice` array is
-    handed back for re-use. Returns (mix, seconds_per_step, total_steps,
-    samples_per_step, loop_len, part_specs)."""
+    handed back for re-use.
+
+    voice_cache is an optional {cache_key: voice} dict, mutated in place,
+    that SequencerPlaybackEngine keeps alive across update_buffer_async
+    calls for the lifetime of a Play session: a mute/step edit never
+    changes what a Stretch part itself sounds like, only which steps
+    trigger it, so re-running that part's WSOLA on every single edit -
+    the whole pattern's worth, every time - was making every mute/step
+    toggle audibly laggy whenever the pattern had a Stretch part at all,
+    independent of the fix to how stale the gate position was. Omit (or
+    pass a fresh dict) for a one-shot render with no reuse across calls.
+    Returns (mix, seconds_per_step, total_steps, samples_per_step,
+    loop_len, part_specs)."""
+    if voice_cache is None:
+        voice_cache = {}
     num_bars = int(pattern.pattern_length) + 1
     steps_per_bar = int(pattern.last_step) + 1
     total_steps = num_bars * steps_per_bar
@@ -428,8 +461,15 @@ def _render_parts(pattern, samples, sample_rate: int = ENGINE_SAMPLE_RATE):
             # trigger (it doesn't depend on which step it lands on, unlike
             # a keyboard part's per-step note), so it's rendered once and
             # reused for every active step instead of redoing the same
-            # stretch again per trigger.
-            voice = render_stretch_voice(sample, part, sample_rate, samples_per_step)
+            # stretch again per trigger - and cached across calls (see
+            # voice_cache above) since it's also identical across mute/step
+            # edits that don't touch this part at all.
+            cache_key = _stretch_voice_cache_key(part, sample, samples_per_step)
+            if cache_key in voice_cache:
+                voice = voice_cache[cache_key]
+            else:
+                voice = render_stretch_voice(sample, part, sample_rate, samples_per_step)
+                voice_cache[cache_key] = voice
             if voice is None or len(voice) == 0:
                 continue
             part_buf = _render_monophonic(voice, active_steps, samples_per_step, loop_len)
@@ -554,11 +594,26 @@ class SequencerPlaybackEngine:
         # its own result instead of clobbering it.
         self._render_lock = threading.Lock()
         self._render_generation = 0
+        # Caches each Stretch part's rendered (WSOLA-stretched) voice audio
+        # across update_buffer_async calls for the lifetime of a Play
+        # session - a mute/step edit never changes what a Stretch part
+        # itself sounds like, only which steps trigger it, so without this
+        # every single edit would re-run WSOLA for the whole pattern from
+        # scratch. Reset whenever playback (re)starts, since the pattern or
+        # samples backing it may have changed entirely.
+        self._voice_cache = {}
 
     def play(self, pattern, samples, sample_rate: int = ENGINE_SAMPLE_RATE) -> bool:
         if not SOUNDDEVICE_AVAILABLE:
             return False
-        buffer, seconds_per_step, total_steps = render_pattern(pattern, samples, sample_rate)
+        self._voice_cache = {}
+        mix, seconds_per_step, total_steps, _samples_per_step, _loop_len, _part_specs = _render_parts(
+            pattern, samples, sample_rate, voice_cache=self._voice_cache
+        )
+        peak = float(np.max(np.abs(mix))) if mix.size else 0.0
+        if peak > 1.0:
+            mix = mix / peak
+        buffer = mix.astype(np.float32)
         self.stop()
         if len(buffer) == 0:
             return False
@@ -624,6 +679,12 @@ class SequencerPlaybackEngine:
         if not self._playing:
             return False
         new_mute_status = pattern.mute_status
+        # Captured now, not re-read inside the worker: play() replaces
+        # self._voice_cache with a fresh dict on every (re)start, and a
+        # worker dispatched by a since-superseded session must keep using
+        # the cache it started with rather than picking up whatever
+        # self._voice_cache happens to point to by the time it finishes.
+        voice_cache = self._voice_cache
 
         with self._render_lock:
             self._render_generation += 1
@@ -631,7 +692,7 @@ class SequencerPlaybackEngine:
 
         def worker():
             mix, seconds_per_step, total_steps, samples_per_step, loop_len, part_specs = _render_parts(
-                pattern, samples, sample_rate
+                pattern, samples, sample_rate, voice_cache=voice_cache
             )
             with self._render_lock:
                 if generation != self._render_generation or not self._playing:
@@ -666,11 +727,6 @@ class SequencerPlaybackEngine:
         if self._playing:
             self._paused = True
             self._pause_event.clear()
-
-    def resume(self):
-        if self._playing and self._paused:
-            self._paused = False
-            self._pause_event.set()
 
     def stop(self):
         self._playing = False

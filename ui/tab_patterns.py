@@ -518,10 +518,7 @@ class TabPatterns(QWidget):
     def _on_play_toggled(self, checked):
         self._style_play_button(checked)
         if checked:
-            if self._sequencer_engine.is_paused():
-                self._sequencer_engine.resume()
-            else:
-                self._start_sequencer_playback()
+            self._start_sequencer_playback()
             if self._play_btn.isChecked():
                 self._playhead_timer.start()
         else:
