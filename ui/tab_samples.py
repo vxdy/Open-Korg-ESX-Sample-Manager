@@ -19,6 +19,7 @@ from esx.audio_dsp import EQBand
 from ui.waveform_widget import WaveformWidget
 from ui.eq_curve_widget import EqCurveWidget
 from ui.error_log import report_error
+from ui.i18n import tr
 from ui import icons
 from ui.theme import TEXT_DIM, ACCENT, BG_FIELD, BORDER
 
@@ -38,6 +39,10 @@ class TabSamples(QWidget):
         self._setup_ui()
         self._init_player()
 
+    def _sample_table_headers(self):
+        return [tr("common.hash"), tr("common.name"), tr("tab_samples.type"), tr("tab_samples.rate"),
+                tr("tab_samples.duration")]
+
     def _init_player(self):
         try:
             from audio.audio_player import AudioPlayer
@@ -54,11 +59,11 @@ class TabSamples(QWidget):
 
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
-        title = QLabel("Samples (384: 256 mono + 128 stereo)")
+        title = QLabel(tr("tab_samples.title"))
         title.setStyleSheet("font-weight: 600; color: #9aa0a8;")
         left_layout.addWidget(title)
 
-        usage_bar_group = QGroupBox("Sample Memory")
+        usage_bar_group = QGroupBox(tr("tab_samples.sample_memory"))
         usage_bar_layout = QHBoxLayout(usage_bar_group)
         usage_bar_layout.setContentsMargins(10, 10, 10, 10)
         usage_bar_layout.setSpacing(10)
@@ -67,15 +72,15 @@ class TabSamples(QWidget):
         self._memory_bar.setTextVisible(False)
         self._memory_bar.setFixedHeight(14)
         usage_bar_layout.addWidget(self._memory_bar, 1)
-        self._memory_label = QLabel("0.00 MB / 0.00 MB (0.00%)")
+        self._memory_label = QLabel(tr("tab_samples.memory_label", used="0.00", max="0.00", pct="0.00"))
         self._memory_label.setStyleSheet(f"color: {TEXT_DIM}; font-weight: 600;")
         usage_bar_layout.addWidget(self._memory_label)
         left_layout.addWidget(usage_bar_group)
 
         search_layout = QHBoxLayout()
-        search_layout.addWidget(QLabel("Search:"))
+        search_layout.addWidget(QLabel(tr("common.search_colon")))
         self._search_edit = QLineEdit()
-        self._search_edit.setPlaceholderText("Filter by name or #...")
+        self._search_edit.setPlaceholderText(tr("tab_samples.search_placeholder"))
         self._search_edit.setClearButtonEnabled(True)
         self._search_edit.textChanged.connect(self._apply_sample_filter)
         search_layout.addWidget(self._search_edit)
@@ -83,7 +88,7 @@ class TabSamples(QWidget):
 
         self._sample_table = QTableWidget()
         self._sample_table.setColumnCount(5)
-        self._sample_table.setHorizontalHeaderLabels(["#", "Name", "Type", "Rate", "Duration"])
+        self._sample_table.setHorizontalHeaderLabels(self._sample_table_headers())
         self._sample_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._sample_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._sample_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -102,62 +107,59 @@ class TabSamples(QWidget):
         editor_layout = QVBoxLayout(editor_widget)
         editor_layout.setSpacing(10)
 
-        form_group = QGroupBox("Sample Properties")
+        form_group = QGroupBox(tr("tab_samples.sample_properties"))
         form = QFormLayout(form_group)
         form.setSpacing(8)
         form.setContentsMargins(10, 14, 10, 10)
 
         self._name_edit = QLineEdit()
         self._name_edit.setMaxLength(8)
-        form.addRow("Name:", self._name_edit)
+        form.addRow(tr("common.name_colon"), self._name_edit)
 
         self._sample_rate_label = QLabel("-")
-        form.addRow("Sample Rate:", self._sample_rate_label)
+        form.addRow(tr("tab_samples.sample_rate_colon"), self._sample_rate_label)
 
         self._num_frames_label = QLabel("-")
-        form.addRow("Frames:", self._num_frames_label)
+        form.addRow(tr("tab_samples.frames_colon"), self._num_frames_label)
 
         self._duration_label = QLabel("-")
-        form.addRow("Duration:", self._duration_label)
+        form.addRow(tr("tab_samples.duration_colon"), self._duration_label)
 
         self._start_label = QLabel("-")
-        form.addRow("Start:", self._start_label)
+        form.addRow(tr("tab_samples.start_colon"), self._start_label)
 
         self._end_label = QLabel("-")
-        form.addRow("End:", self._end_label)
+        form.addRow(tr("tab_samples.end_colon"), self._end_label)
 
         self._loop_start_spin = QSpinBox()
         self._loop_start_spin.setRange(0, 0)
-        self._loop_start_spin.setToolTip(
-            "Loop start frame. Only stored for mono samples; stereo sample "
-            "headers have no loop-start field."
-        )
+        self._loop_start_spin.setToolTip(tr("tab_samples.loop_start_tooltip"))
         self._loop_start_spin.valueChanged.connect(self._on_loop_start_changed)
-        form.addRow("Loop Start:", self._loop_start_spin)
+        form.addRow(tr("tab_samples.loop_start_colon"), self._loop_start_spin)
 
         self._play_level_combo = QComboBox()
-        self._play_level_combo.addItem("0 dB", int(PlayLevel.DB_0))
-        self._play_level_combo.addItem("+12 dB", int(PlayLevel.DB_12))
-        form.addRow("Play Level:", self._play_level_combo)
+        self._play_level_combo.addItem(tr("tab_samples.db_0"), int(PlayLevel.DB_0))
+        self._play_level_combo.addItem(tr("tab_samples.db_plus12"), int(PlayLevel.DB_12))
+        form.addRow(tr("tab_samples.play_level_colon"), self._play_level_combo)
 
         self._stretch_step_combo = QComboBox()
-        self._stretch_step_combo.addItem("0 (Off)", int(StretchStep.OFF))
+        self._stretch_step_combo.addItem(tr("tab_samples.stretch_off"), int(StretchStep.OFF))
         for step in range(1, 129):
             self._stretch_step_combo.addItem(str(step), step - 1)
-        form.addRow("Stretch Step:", self._stretch_step_combo)
+        form.addRow(tr("tab_samples.stretch_step_colon"), self._stretch_step_combo)
 
         editor_layout.addWidget(form_group)
 
-        waveform_group = QGroupBox("Waveform")
+        waveform_group = QGroupBox(tr("common.waveform"))
         waveform_layout = QVBoxLayout(waveform_group)
         self._waveform = WaveformWidget()
         waveform_layout.addWidget(self._waveform)
         editor_layout.addWidget(waveform_group)
 
-        playback_group = QGroupBox("Audio Playback")
+        playback_group = QGroupBox(tr("tab_samples.audio_playback"))
         playback_layout = QHBoxLayout(playback_group)
-        self._play_btn = QPushButton(icons.icon("play"), "Play")
-        self._stop_btn = QPushButton(icons.icon("stop"), "Stop")
+        self._play_btn = QPushButton(icons.icon("play"), tr("common.play"))
+        self._stop_btn = QPushButton(icons.icon("stop"), tr("common.stop"))
         self._play_btn.clicked.connect(self._play_sample)
         self._stop_btn.clicked.connect(self._stop_sample)
         playback_layout.addWidget(self._play_btn)
@@ -165,23 +167,23 @@ class TabSamples(QWidget):
         editor_layout.addWidget(playback_group)
         editor_layout.addStretch()
 
-        right_tabs.addTab(editor_widget, "Sample Editor")
+        right_tabs.addTab(editor_widget, tr("tab_samples.tab_editor"))
 
-        right_tabs.addTab(self._build_tools_tab(), "Sample Tools")
-        right_tabs.addTab(self._build_eq_tab(), "EQ")
+        right_tabs.addTab(self._build_tools_tab(), tr("tab_samples.tab_tools"))
+        right_tabs.addTab(self._build_eq_tab(), tr("tab_samples.tab_eq"))
 
         usage_widget = QWidget()
         usage_layout = QVBoxLayout(usage_widget)
-        usage_layout.addWidget(QLabel("Patterns using this sample:"))
+        usage_layout.addWidget(QLabel(tr("tab_samples.patterns_using_this_sample")))
         self._usage_table = QTableWidget()
         self._usage_table.setColumnCount(2)
-        self._usage_table.setHorizontalHeaderLabels(["Pattern #", "Part"])
+        self._usage_table.setHorizontalHeaderLabels([tr("tab_samples.pattern_hash"), tr("common.part")])
         self._usage_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._usage_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self._usage_table.verticalHeader().setVisible(False)
         self._usage_table.setAlternatingRowColors(True)
         usage_layout.addWidget(self._usage_table)
-        right_tabs.addTab(usage_widget, "Pattern Usage")
+        right_tabs.addTab(usage_widget, tr("tab_samples.tab_pattern_usage"))
 
         splitter.addWidget(right_tabs)
         splitter.setSizes([350, 650])
@@ -191,19 +193,19 @@ class TabSamples(QWidget):
         layout = QVBoxLayout(widget)
         layout.setSpacing(10)
 
-        waveform_group = QGroupBox("Waveform")
+        waveform_group = QGroupBox(tr("common.waveform"))
         wf_layout = QVBoxLayout(waveform_group)
         self._tools_waveform = WaveformWidget()
         self._tools_waveform.set_editable(True)
         self._tools_waveform.selectionChanged.connect(self._on_waveform_selection_changed)
         wf_layout.addWidget(self._tools_waveform)
-        wf_hint = QLabel("Drag the green (start) / red (end) handles to set the Trim/Cut selection.")
+        wf_hint = QLabel(tr("tab_samples.waveform_hint"))
         wf_hint.setStyleSheet(f"color: {TEXT_DIM};")
         wf_hint.setWordWrap(True)
         wf_layout.addWidget(wf_hint)
         layout.addWidget(waveform_group)
 
-        normalize_group = QGroupBox("Normalize")
+        normalize_group = QGroupBox(tr("tab_samples.normalize"))
         normalize_form = QFormLayout(normalize_group)
         normalize_form.setSpacing(8)
 
@@ -212,30 +214,30 @@ class TabSamples(QWidget):
         self._normalize_peak_spin.setRange(-24.0, 0.0)
         self._normalize_peak_spin.setValue(-0.1)
         self._normalize_peak_spin.setSuffix(" dB")
-        self._normalize_peak_btn = QPushButton(icons.icon("arrows-up-down"), "Normalize (Peak)")
+        self._normalize_peak_btn = QPushButton(icons.icon("arrows-up-down"), tr("tab_samples.normalize_peak_btn"))
         self._normalize_peak_btn.clicked.connect(self._do_normalize_peak)
         peak_row.addWidget(self._normalize_peak_spin)
         peak_row.addWidget(self._normalize_peak_btn)
-        normalize_form.addRow("Target Peak:", peak_row)
+        normalize_form.addRow(tr("tab_samples.target_peak_colon"), peak_row)
 
         lufs_row = QHBoxLayout()
         self._normalize_lufs_spin = QDoubleSpinBox()
         self._normalize_lufs_spin.setRange(-40.0, 0.0)
         self._normalize_lufs_spin.setValue(-14.0)
         self._normalize_lufs_spin.setSuffix(" LUFS")
-        self._normalize_lufs_btn = QPushButton(icons.icon("volume-high"), "Normalize Loudness")
+        self._normalize_lufs_btn = QPushButton(icons.icon("volume-high"), tr("tab_samples.normalize_loudness_btn"))
         self._normalize_lufs_btn.clicked.connect(self._do_normalize_loudness)
         lufs_row.addWidget(self._normalize_lufs_spin)
         lufs_row.addWidget(self._normalize_lufs_btn)
-        normalize_form.addRow("Target Loudness:", lufs_row)
+        normalize_form.addRow(tr("tab_samples.target_loudness_colon"), lufs_row)
 
         self._normalize_status_label = QLabel("-")
         self._normalize_status_label.setStyleSheet(f"color: {TEXT_DIM};")
         self._normalize_status_label.setWordWrap(True)
-        normalize_form.addRow("Status:", self._normalize_status_label)
+        normalize_form.addRow(tr("common.status_colon"), self._normalize_status_label)
         layout.addWidget(normalize_group)
 
-        trim_group = QGroupBox("Trim / Cut")
+        trim_group = QGroupBox(tr("tab_samples.trim_cut"))
         trim_form = QFormLayout(trim_group)
         trim_form.setSpacing(8)
 
@@ -245,19 +247,19 @@ class TabSamples(QWidget):
         self._trim_end_spin.setRange(0, 0)
         self._trim_start_spin.valueChanged.connect(self._on_trim_spin_changed)
         self._trim_end_spin.valueChanged.connect(self._on_trim_spin_changed)
-        trim_form.addRow("Selection Start (frame):", self._trim_start_spin)
-        trim_form.addRow("Selection End (frame):", self._trim_end_spin)
+        trim_form.addRow(tr("tab_samples.selection_start_frame_colon"), self._trim_start_spin)
+        trim_form.addRow(tr("tab_samples.selection_end_frame_colon"), self._trim_end_spin)
 
-        reset_selection_btn = QPushButton("Select Full Range")
+        reset_selection_btn = QPushButton(tr("tab_samples.select_full_range"))
         reset_selection_btn.clicked.connect(self._reset_trim_selection)
         trim_form.addRow("", reset_selection_btn)
 
         trim_btn_row = QHBoxLayout()
-        self._trim_btn = QPushButton(icons.icon("crop-simple"), "Trim to Selection")
-        self._trim_btn.setToolTip("Keep only audio inside the selection; discard the rest.")
+        self._trim_btn = QPushButton(icons.icon("crop-simple"), tr("tab_samples.trim_to_selection"))
+        self._trim_btn.setToolTip(tr("tab_samples.trim_tooltip"))
         self._trim_btn.clicked.connect(self._do_trim)
-        self._cut_btn = QPushButton(icons.icon("scissors"), "Cut Selection")
-        self._cut_btn.setToolTip("Remove audio inside the selection; splice the remainder together.")
+        self._cut_btn = QPushButton(icons.icon("scissors"), tr("tab_samples.cut_selection"))
+        self._cut_btn.setToolTip(tr("tab_samples.cut_tooltip"))
         self._cut_btn.clicked.connect(self._do_cut)
         trim_btn_row.addWidget(self._trim_btn)
         trim_btn_row.addWidget(self._cut_btn)
@@ -265,16 +267,16 @@ class TabSamples(QWidget):
 
         layout.addWidget(trim_group)
 
-        self._tools_undo_btn = QPushButton(icons.icon("rotate-left"), "Undo Last Operation")
+        self._tools_undo_btn = QPushButton(icons.icon("rotate-left"), tr("common.undo_last_operation"))
         self._tools_undo_btn.clicked.connect(self._undo_last_operation)
         self._tools_undo_btn.setEnabled(False)
         self._undo_buttons.append(self._tools_undo_btn)
         layout.addWidget(self._tools_undo_btn)
 
-        playback_group = QGroupBox("Audio Playback")
+        playback_group = QGroupBox(tr("tab_samples.audio_playback"))
         playback_layout = QHBoxLayout(playback_group)
-        tools_play_btn = QPushButton(icons.icon("play"), "Play")
-        tools_stop_btn = QPushButton(icons.icon("stop"), "Stop")
+        tools_play_btn = QPushButton(icons.icon("play"), tr("common.play"))
+        tools_stop_btn = QPushButton(icons.icon("stop"), tr("common.stop"))
         tools_play_btn.clicked.connect(self._play_sample)
         tools_stop_btn.clicked.connect(self._stop_sample)
         playback_layout.addWidget(tools_play_btn)
@@ -284,33 +286,36 @@ class TabSamples(QWidget):
         layout.addStretch()
         return widget
 
-    EQ_BAND_TYPE_CHOICES = [
-        ("Peak", "peak"),
-        ("Low Shelf", "low_shelf"),
-        ("High Shelf", "high_shelf"),
-        ("Low Pass", "low_pass"),
-        ("High Pass", "high_pass"),
-    ]
+    # Internal (untranslated) type keys, in display order - the actual
+    # per-language labels are built by _eq_band_type_choices() at widget-
+    # build time instead of stored here directly: this list is a class body
+    # attribute, evaluated once at module import (before main.py has
+    # chosen a language - see ui/i18n.py's module docstring), so it must
+    # never hold tr()-resolved text itself.
+    EQ_BAND_TYPES = ["peak", "low_shelf", "high_shelf", "low_pass", "high_pass"]
     MAX_EQ_BANDS = 15
+
+    def _eq_band_type_choices(self):
+        return [(tr(f"tab_samples.eq_type_{t}"), t) for t in self.EQ_BAND_TYPES]
 
     def _build_eq_tab(self) -> QWidget:
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setSpacing(10)
 
-        curve_group = QGroupBox("Frequency Response")
+        curve_group = QGroupBox(tr("tab_samples.frequency_response"))
         curve_layout = QVBoxLayout(curve_group)
         self._eq_curve = EqCurveWidget()
         self._eq_curve.bandChanged.connect(self._on_eq_node_dragged)
         self._eq_curve.bandQChanged.connect(self._on_eq_node_q_changed)
         curve_layout.addWidget(self._eq_curve)
-        curve_hint = QLabel("Drag a numbered point to set its Freq/Gain. Scroll over a point to change Q.")
+        curve_hint = QLabel(tr("tab_samples.eq_curve_hint"))
         curve_hint.setStyleSheet(f"color: {TEXT_DIM};")
         curve_hint.setWordWrap(True)
         curve_layout.addWidget(curve_hint)
         layout.addWidget(curve_group)
 
-        bands_group = QGroupBox("Parametric EQ")
+        bands_group = QGroupBox(tr("tab_samples.parametric_eq"))
         bands_group_layout = QVBoxLayout(bands_group)
         bands_group_layout.setSpacing(6)
 
@@ -318,8 +323,11 @@ class TabSamples(QWidget):
         header_layout = QHBoxLayout(header_widget)
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.setSpacing(6)
-        header_specs = [("#", 0, 18), ("Type", 2, None), ("Freq", 2, None),
-                         ("Gain", 2, None), ("Q", 1, None), ("On", 0, 28), ("", 0, 32)]
+        header_specs = [
+            (tr("common.hash"), 0, 18), (tr("tab_samples.type"), 2, None), (tr("tab_samples.freq"), 2, None),
+            (tr("tab_samples.gain"), 2, None), (tr("tab_samples.q"), 1, None), (tr("tab_samples.on"), 0, 28),
+            ("", 0, 32),
+        ]
         for text, stretch, fixed_w in header_specs:
             lbl = QLabel(text)
             lbl.setStyleSheet(f"color: {TEXT_DIM}; font-weight: 600;")
@@ -340,8 +348,8 @@ class TabSamples(QWidget):
         self._renumber_eq_rows()
 
         add_row = QHBoxLayout()
-        self._eq_add_btn = QPushButton(icons.icon("plus"), "Add Band")
-        self._eq_add_btn.setToolTip(f"Add a new EQ band (max {self.MAX_EQ_BANDS}).")
+        self._eq_add_btn = QPushButton(icons.icon("plus"), tr("tab_samples.add_band"))
+        self._eq_add_btn.setToolTip(tr("tab_samples.add_band_tooltip", max=self.MAX_EQ_BANDS))
         self._eq_add_btn.clicked.connect(lambda: self._add_eq_band())
         self._eq_count_label = QLabel()
         self._eq_count_label.setStyleSheet(f"color: {TEXT_DIM};")
@@ -353,16 +361,16 @@ class TabSamples(QWidget):
 
         layout.addWidget(bands_group)
 
-        reset_eq_btn = QPushButton(icons.icon("rotate-left"), "Reset Bands (Flat)")
-        reset_eq_btn.setToolTip("Removes all extra bands and resets to a single flat Peak band.")
+        reset_eq_btn = QPushButton(icons.icon("rotate-left"), tr("tab_samples.reset_bands_flat"))
+        reset_eq_btn.setToolTip(tr("tab_samples.reset_bands_tooltip"))
         reset_eq_btn.clicked.connect(self._reset_eq_bands)
         layout.addWidget(reset_eq_btn)
 
         apply_row = QHBoxLayout()
-        self._apply_eq_btn = QPushButton(icons.icon("check"), "Apply EQ to Sample")
-        self._apply_eq_btn.setToolTip("Permanently bakes the current EQ curve into the sample audio.")
+        self._apply_eq_btn = QPushButton(icons.icon("check"), tr("tab_samples.apply_eq_to_sample"))
+        self._apply_eq_btn.setToolTip(tr("tab_samples.apply_eq_tooltip"))
         self._apply_eq_btn.clicked.connect(self._apply_eq_to_sample)
-        self._eq_undo_btn = QPushButton(icons.icon("rotate-left"), "Undo Last Operation")
+        self._eq_undo_btn = QPushButton(icons.icon("rotate-left"), tr("common.undo_last_operation"))
         self._eq_undo_btn.clicked.connect(self._undo_last_operation)
         self._eq_undo_btn.setEnabled(False)
         self._undo_buttons.append(self._eq_undo_btn)
@@ -370,10 +378,10 @@ class TabSamples(QWidget):
         apply_row.addWidget(self._eq_undo_btn)
         layout.addLayout(apply_row)
 
-        playback_group = QGroupBox("Audio Playback (EQ Preview)")
+        playback_group = QGroupBox(tr("tab_samples.audio_playback_eq_preview"))
         playback_layout = QHBoxLayout(playback_group)
-        eq_play_btn = QPushButton(icons.icon("play"), "Play with EQ")
-        eq_stop_btn = QPushButton(icons.icon("stop"), "Stop")
+        eq_play_btn = QPushButton(icons.icon("play"), tr("tab_samples.play_with_eq"))
+        eq_stop_btn = QPushButton(icons.icon("stop"), tr("common.stop"))
         eq_play_btn.clicked.connect(self._play_eq_preview)
         eq_stop_btn.clicked.connect(self._stop_sample)
         playback_layout.addWidget(eq_play_btn)
@@ -396,7 +404,7 @@ class TabSamples(QWidget):
         row_layout.addWidget(number_label, 0)
 
         type_combo = QComboBox()
-        for label, value in self.EQ_BAND_TYPE_CHOICES:
+        for label, value in self._eq_band_type_choices():
             type_combo.addItem(label, value)
         type_combo.setCurrentIndex(max(0, type_combo.findData(band.type)))
         row_layout.addWidget(type_combo, 2)
@@ -424,11 +432,11 @@ class TabSamples(QWidget):
 
         enable_check = QCheckBox()
         enable_check.setChecked(band.enabled)
-        enable_check.setToolTip("Enable/disable this band")
+        enable_check.setToolTip(tr("tab_samples.enable_disable_band_tooltip"))
         row_layout.addWidget(enable_check, 0)
 
         remove_btn = QPushButton(icons.icon("trash"), "")
-        remove_btn.setToolTip("Remove this band")
+        remove_btn.setToolTip(tr("tab_samples.remove_band_tooltip"))
         remove_btn.setFixedWidth(32)
         row_layout.addWidget(remove_btn, 0)
 
@@ -462,7 +470,7 @@ class TabSamples(QWidget):
     def _update_eq_add_button_state(self):
         count = len(self._eq_bands)
         self._eq_add_btn.setEnabled(count < self.MAX_EQ_BANDS)
-        self._eq_count_label.setText(f"{count} / {self.MAX_EQ_BANDS} bands")
+        self._eq_count_label.setText(tr("tab_samples.band_count", count=count, max=self.MAX_EQ_BANDS))
 
     def _add_eq_band(self, band: EQBand = None):
         if len(self._eq_bands) >= self.MAX_EQ_BANDS:
@@ -554,17 +562,17 @@ class TabSamples(QWidget):
     def _apply_eq_to_sample(self):
         sample = self._current_sample
         if sample is None or sample.is_empty():
-            QMessageBox.warning(self, "Apply EQ", "No sample selected")
+            QMessageBox.warning(self, tr("tab_samples.apply_eq_title"), tr("tab_samples.no_sample_selected"))
             return
         self._sync_eq_bands_from_ui()
         if not audio_dsp.any_band_active(self._eq_bands):
-            QMessageBox.information(self, "Apply EQ", "All EQ bands are flat/disabled - nothing to apply.")
+            QMessageBox.information(self, tr("tab_samples.apply_eq_title"), tr("tab_samples.eq_flat_nothing_to_apply"))
             return
         self._push_undo_snapshot(sample)
         ch1, ch2 = self._get_sample_channels(sample)
         ch1, ch2 = audio_dsp.apply_eq([ch1, ch2], sample.sample_rate, self._eq_bands)
         self._commit_channels(sample, ch1, ch2)
-        QMessageBox.information(self, "Apply EQ", "EQ applied to sample.")
+        QMessageBox.information(self, tr("tab_samples.apply_eq_title"), tr("tab_samples.eq_applied"))
 
     def _get_sample_channels(self, sample):
         ch1 = audio_dsp.be16_to_float(sample.audio_data_ch1)
@@ -595,7 +603,7 @@ class TabSamples(QWidget):
             return
         sample = snap["sample"]
         if sample is not self._current_sample:
-            QMessageBox.warning(self, "Undo", "Selected sample has changed; cannot undo.")
+            QMessageBox.warning(self, tr("tab_samples.undo_title"), tr("tab_samples.undo_sample_changed"))
             return
         sample.audio_data_ch1 = snap["audio_data_ch1"]
         sample.audio_data_ch2 = snap["audio_data_ch2"]
@@ -605,7 +613,7 @@ class TabSamples(QWidget):
         sample.loop_start = snap["loop_start"]
         self._clear_undo_snapshot()
         self._refresh_after_edit(sample)
-        self._normalize_status_label.setText("Last operation undone.")
+        self._normalize_status_label.setText(tr("tab_samples.last_operation_undone"))
 
     def _commit_channels(self, sample, ch1_arr, ch2_arr):
         sample.audio_data_ch1 = audio_dsp.float_to_be16(ch1_arr)
@@ -655,15 +663,15 @@ class TabSamples(QWidget):
     def _do_trim(self):
         sample = self._current_sample
         if sample is None or sample.is_empty():
-            QMessageBox.warning(self, "Trim", "No sample selected")
+            QMessageBox.warning(self, tr("tab_samples.trim_title"), tr("tab_samples.no_sample_selected"))
             return
         start = self._trim_start_spin.value()
         end = self._trim_end_spin.value()
         if start > end:
-            QMessageBox.warning(self, "Trim", "Selection start must be before end")
+            QMessageBox.warning(self, tr("tab_samples.trim_title"), tr("tab_samples.selection_start_after_end"))
             return
         if start == 0 and end >= sample.num_frames - 1:
-            QMessageBox.information(self, "Trim", "Selection already covers the full sample.")
+            QMessageBox.information(self, tr("tab_samples.trim_title"), tr("tab_samples.selection_full_sample"))
             return
         self._push_undo_snapshot(sample)
         ch1, ch2 = self._get_sample_channels(sample)
@@ -671,24 +679,24 @@ class TabSamples(QWidget):
         ch2 = audio_dsp.trim(ch2, start, end)
         self._commit_channels(sample, ch1, ch2)
         self._reset_trim_selection()
-        self._normalize_status_label.setText(f"Trimmed to {len(ch1)} frames.")
+        self._normalize_status_label.setText(tr("tab_samples.trimmed_to_frames", n=len(ch1)))
 
     def _do_cut(self):
         sample = self._current_sample
         if sample is None or sample.is_empty():
-            QMessageBox.warning(self, "Cut", "No sample selected")
+            QMessageBox.warning(self, tr("tab_samples.cut_title"), tr("tab_samples.no_sample_selected"))
             return
         start = self._trim_start_spin.value()
         end = self._trim_end_spin.value()
         if start > end:
-            QMessageBox.warning(self, "Cut", "Selection start must be before end")
+            QMessageBox.warning(self, tr("tab_samples.cut_title"), tr("tab_samples.selection_start_after_end"))
             return
         if end - start + 1 >= sample.num_frames:
-            QMessageBox.warning(self, "Cut", "Cannot cut the entire sample.")
+            QMessageBox.warning(self, tr("tab_samples.cut_title"), tr("tab_samples.cannot_cut_entire_sample"))
             return
         reply = QMessageBox.question(
-            self, "Cut Selection",
-            f"Remove frames {start}-{end} and splice the remainder together?",
+            self, tr("tab_samples.cut_selection_title"),
+            tr("tab_samples.cut_selection_confirm", start=start, end=end),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -699,12 +707,14 @@ class TabSamples(QWidget):
         ch2 = audio_dsp.cut_range(ch2, start, end)
         self._commit_channels(sample, ch1, ch2)
         self._reset_trim_selection()
-        self._normalize_status_label.setText(f"Cut {end - start + 1} frames; {len(ch1)} frames remain.")
+        self._normalize_status_label.setText(
+            tr("tab_samples.cut_result", removed=end - start + 1, remaining=len(ch1))
+        )
 
     def _do_normalize_peak(self):
         sample = self._current_sample
         if sample is None or sample.is_empty():
-            QMessageBox.warning(self, "Normalize", "No sample selected")
+            QMessageBox.warning(self, tr("tab_samples.normalize_title"), tr("tab_samples.no_sample_selected"))
             return
         self._push_undo_snapshot(sample)
         ch1, ch2 = self._get_sample_channels(sample)
@@ -712,18 +722,18 @@ class TabSamples(QWidget):
         channels, gain_db, had_signal = audio_dsp.normalize_peak([ch1, ch2], target_db)
         if not had_signal:
             self._clear_undo_snapshot()
-            self._normalize_status_label.setText("Sample is silent; nothing to normalize.")
+            self._normalize_status_label.setText(tr("tab_samples.silent_nothing_to_normalize"))
             return
         ch1, ch2 = channels
         self._commit_channels(sample, ch1, ch2)
         self._normalize_status_label.setText(
-            f"Peak normalized to {target_db:.1f} dB (gain {gain_db:+.2f} dB)."
+            tr("tab_samples.peak_normalized", target=f"{target_db:.1f}", gain=f"{gain_db:+.2f}")
         )
 
     def _do_normalize_loudness(self):
         sample = self._current_sample
         if sample is None or sample.is_empty():
-            QMessageBox.warning(self, "Normalize Loudness", "No sample selected")
+            QMessageBox.warning(self, tr("tab_samples.normalize_loudness_title"), tr("tab_samples.no_sample_selected"))
             return
         self._push_undo_snapshot(sample)
         ch1, ch2 = self._get_sample_channels(sample)
@@ -733,14 +743,17 @@ class TabSamples(QWidget):
         )
         if measured_before == float('-inf'):
             self._clear_undo_snapshot()
-            self._normalize_status_label.setText("Sample is silent; nothing to normalize.")
+            self._normalize_status_label.setText(tr("tab_samples.silent_nothing_to_normalize"))
             return
         ch1, ch2 = channels
         self._commit_channels(sample, ch1, ch2)
-        clip_note = " (limited to avoid clipping)" if clipped else ""
+        clip_note = tr("tab_samples.clip_limited_note") if clipped else ""
         self._normalize_status_label.setText(
-            f"Loudness normalized: {measured_before:.1f} -> {target_lufs:.1f} LUFS "
-            f"(gain {gain_db:+.2f} dB){clip_note}."
+            tr(
+                "tab_samples.loudness_normalized",
+                before=f"{measured_before:.1f}", target=f"{target_lufs:.1f}",
+                gain=f"{gain_db:+.2f}", clip_note=clip_note,
+            )
         )
 
     def update_data(self, esx_file):
@@ -765,7 +778,7 @@ class TabSamples(QWidget):
     def _update_memory_usage(self):
         if self._esx is None:
             self._memory_bar.setValue(0)
-            self._memory_label.setText("0.00 MB / 0.00 MB (0.00%)")
+            self._memory_label.setText(tr("tab_samples.memory_label", used="0.00", max="0.00", pct="0.00"))
             return
 
         used_bytes = self._esx.get_sample_memory_used_bytes()
@@ -782,7 +795,9 @@ class TabSamples(QWidget):
             f"border-radius: 4px; }}"
             f"QProgressBar::chunk {{ background-color: {bar_color}; border-radius: 3px; }}"
         )
-        self._memory_label.setText(f"{used_mb:.2f} MB / {max_mb:.2f} MB ({pct:.2f}%)")
+        self._memory_label.setText(
+            tr("tab_samples.memory_label", used=f"{used_mb:.2f}", max=f"{max_mb:.2f}", pct=f"{pct:.2f}")
+        )
 
     def _apply_sample_filter(self):
         query = self._search_edit.text().strip().lower()
@@ -800,11 +815,11 @@ class TabSamples(QWidget):
     def _set_sample_row(self, row: int, sample):
         self._sample_table.setItem(row, 0, QTableWidgetItem(str(row)))
         name = sample.name.strip('\x00').strip()
-        self._sample_table.setItem(row, 1, QTableWidgetItem(name if name else "(empty)"))
-        stype = "Stereo" if sample.is_stereo_original else "Mono"
+        self._sample_table.setItem(row, 1, QTableWidgetItem(name if name else tr("common.empty_placeholder")))
+        stype = tr("tab_samples.stereo") if sample.is_stereo_original else tr("tab_samples.mono")
         self._sample_table.setItem(row, 2, QTableWidgetItem(stype))
         self._sample_table.setItem(row, 3, QTableWidgetItem(str(sample.sample_rate)))
-        self._sample_table.setItem(row, 4, QTableWidgetItem(f"{sample.duration_seconds():.3f}s"))
+        self._sample_table.setItem(row, 4, QTableWidgetItem(tr("tab_samples.duration_value", n=f"{sample.duration_seconds():.3f}")))
 
     def _on_sample_selected(self):
         if self._esx is None:
@@ -825,7 +840,7 @@ class TabSamples(QWidget):
         self._name_edit.setText(sample.name.strip('\x00'))
         self._sample_rate_label.setText(str(sample.sample_rate))
         self._num_frames_label.setText(str(sample.num_frames))
-        self._duration_label.setText(f"{sample.duration_seconds():.3f} s")
+        self._duration_label.setText(tr("tab_samples.duration_value", n=f"{sample.duration_seconds():.3f}"))
         self._start_label.setText(str(sample.start))
         self._end_label.setText(str(sample.end))
         max_frame = max(0, sample.num_frames - 1)
@@ -856,13 +871,13 @@ class TabSamples(QWidget):
         for pi, pattern in enumerate(self._esx.patterns):
             for di, part in enumerate(pattern.drum_parts):
                 if part.sample_pointer == sample_idx:
-                    usage.append((pi, f"Drum {di + 1}"))
+                    usage.append((pi, tr("tab_samples.usage_drum", n=di + 1)))
             for ki, part in enumerate(pattern.keyboard_parts):
                 if part.sample_pointer == sample_idx:
-                    usage.append((pi, f"Keyboard {ki + 1}"))
+                    usage.append((pi, tr("tab_samples.usage_keyboard", n=ki + 1)))
             for si, part in enumerate(pattern.stretch_slice_parts):
                 if part.sample_pointer == sample_idx:
-                    usage.append((pi, f"Stretch/Slice {si + 1}"))
+                    usage.append((pi, tr("tab_samples.usage_stretch_slice", n=si + 1)))
 
         self._usage_table.setRowCount(len(usage))
         for i, (pattern_idx, part_name) in enumerate(usage):
@@ -901,15 +916,15 @@ class TabSamples(QWidget):
 
     def import_samples(self):
         if self._esx is None:
-            QMessageBox.warning(self, "Import", "No ESX file loaded")
+            QMessageBox.warning(self, tr("tab_samples.import_title"), tr("tab_samples.no_esx_file_loaded"))
             return
 
         self.apply_changes()
         files, _ = QFileDialog.getOpenFileNames(
             self,
-            "Import WAV Sample(s)",
+            tr("tab_samples.import_wav_samples_title"),
             "",
-            "WAV Files (*.wav);;All Files (*)"
+            f"{tr('tab_samples.wav_files_filter')};;{tr('common.all_files_filter')}"
         )
         if not files:
             return
@@ -942,8 +957,8 @@ class TabSamples(QWidget):
                 if slot is not None and not self._esx.samples[slot].is_empty():
                     reply = QMessageBox.question(
                         self,
-                        "Overwrite Sample",
-                        f"Sample slot {slot} is not empty. Overwrite it?",
+                        tr("tab_samples.overwrite_sample_title"),
+                        tr("tab_samples.overwrite_sample_confirm", slot=slot),
                         QMessageBox.StandardButton.Yes
                         | QMessageBox.StandardButton.No
                         | QMessageBox.StandardButton.Cancel
@@ -959,17 +974,17 @@ class TabSamples(QWidget):
                         want_stereo
                     )
                     if slot is None:
-                        kind = "stereo" if want_stereo else "mono"
-                        raise ValueError(f"No empty {kind} sample slots available")
+                        kind = tr("tab_samples.stereo_lower") if want_stereo else tr("tab_samples.mono_lower")
+                        raise ValueError(tr("tab_samples.no_empty_slots", kind=kind))
 
                 as_mono = force_mono or slot < NUM_SAMPLES_MONO or source_channels == 1
                 new_sample = Sample.from_wav_file(filepath, slot, as_mono=as_mono)
                 if self.import_with_plus12db:
                     new_sample.play_level = PlayLevel.DB_12
                 if slot >= NUM_SAMPLES_MONO and new_sample.is_stereo_original is False:
-                    raise ValueError("Cannot store a mono import in a stereo sample slot")
+                    raise ValueError(tr("tab_samples.cannot_store_mono_in_stereo_slot"))
                 if slot < NUM_SAMPLES_MONO and new_sample.is_stereo_original:
-                    raise ValueError("Cannot store a stereo import in a mono sample slot")
+                    raise ValueError(tr("tab_samples.cannot_store_stereo_in_mono_slot"))
 
                 self._esx.samples[slot] = new_sample
                 self._deleted_sample_indices.discard(slot)
@@ -988,20 +1003,20 @@ class TabSamples(QWidget):
             self._on_sample_selected()
 
         if errors:
-            QMessageBox.warning(self, "Import Errors", "\n".join(errors))
+            QMessageBox.warning(self, tr("tab_samples.import_errors_title"), "\n".join(errors))
         elif imported:
-            QMessageBox.information(self, "Import", f"Imported {len(imported)} sample(s)")
+            QMessageBox.information(self, tr("tab_samples.import_title"), tr("tab_samples.imported_n_samples", n=len(imported)))
 
     def _selected_rows(self) -> list[int]:
         return sorted({idx.row() for idx in self._sample_table.selectionModel().selectedRows()})
 
     def delete_selected_samples(self):
         if self._esx is None:
-            QMessageBox.warning(self, "Delete", "No ESX file loaded")
+            QMessageBox.warning(self, tr("common.delete_title"), tr("tab_samples.no_esx_file_loaded"))
             return
         rows = self._selected_rows()
         if not rows:
-            QMessageBox.warning(self, "Delete", "No sample selected")
+            QMessageBox.warning(self, tr("common.delete_title"), tr("tab_samples.no_sample_selected"))
             return
         self._delete_samples(rows)
 
@@ -1014,16 +1029,15 @@ class TabSamples(QWidget):
             return
 
         if len(non_empty_rows) == 1:
-            message = f"Delete sample {non_empty_rows[0]} and clear pattern references to it?"
+            message = tr("tab_samples.delete_one_confirm", n=non_empty_rows[0])
         else:
-            message = (
-                f"Delete {len(non_empty_rows)} samples "
-                f"({', '.join(str(r) for r in non_empty_rows)}) "
-                "and clear pattern references to them?"
+            message = tr(
+                "tab_samples.delete_many_confirm",
+                count=len(non_empty_rows), rows=", ".join(str(r) for r in non_empty_rows),
             )
 
         reply = QMessageBox.question(
-            self, "Delete Sample(s)", message,
+            self, tr("tab_samples.delete_samples_title"), message,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -1048,11 +1062,11 @@ class TabSamples(QWidget):
         menu = QMenu(self)
         export_action = menu.addAction(
             icons.icon("file-export"),
-            "Export as WAV..." if len(rows) == 1 else f"Export {len(rows)} Samples as WAV..."
+            tr("tab_samples.export_as_wav") if len(rows) == 1 else tr("tab_samples.export_n_as_wav", n=len(rows))
         )
         delete_action = menu.addAction(
             icons.icon("trash"),
-            "Delete Sample" if len(rows) == 1 else f"Delete {len(rows)} Samples"
+            tr("tab_samples.delete_sample") if len(rows) == 1 else tr("tab_samples.delete_n_samples", n=len(rows))
         )
         action = menu.exec(self._sample_table.viewport().mapToGlobal(pos))
         if action == export_action:
@@ -1066,7 +1080,7 @@ class TabSamples(QWidget):
             if 0 <= r < len(self._esx.samples) and not self._esx.samples[r].is_empty()
         ]
         if not non_empty:
-            QMessageBox.information(self, "Export", "No non-empty samples selected.")
+            QMessageBox.information(self, tr("tab_samples.export_title"), tr("tab_samples.no_nonempty_samples_selected"))
             return
 
         if len(non_empty) == 1:
@@ -1074,21 +1088,21 @@ class TabSamples(QWidget):
             name = sample.name.strip('\x00').strip() or f"sample_{idx}"
             default_name = f"{idx}_{name}.wav"
             path, _ = QFileDialog.getSaveFileName(
-                self, "Export Sample as WAV", default_name,
-                "WAV Files (*.wav);;All Files (*)"
+                self, tr("tab_samples.export_sample_as_wav_title"), default_name,
+                f"{tr('tab_samples.wav_files_filter')};;{tr('common.all_files_filter')}"
             )
             if not path:
                 return
             try:
                 with open(path, 'wb') as f:
                     f.write(sample.to_export_wav_bytes())
-                QMessageBox.information(self, "Export", f"Exported to:\n{path}")
+                QMessageBox.information(self, tr("tab_samples.export_title"), tr("tab_samples.exported_to", path=path))
             except Exception as exc:
                 report_error("export_sample", exc)
-                QMessageBox.critical(self, "Export Error", str(exc))
+                QMessageBox.critical(self, tr("tab_samples.export_error_title"), str(exc))
             return
 
-        directory = QFileDialog.getExistingDirectory(self, "Select Export Directory")
+        directory = QFileDialog.getExistingDirectory(self, tr("tab_samples.select_export_directory_title"))
         if not directory:
             return
 
@@ -1106,13 +1120,15 @@ class TabSamples(QWidget):
                 errors.append(f"{idx} ({name}): {exc}")
 
         if errors:
-            QMessageBox.warning(self, "Export Errors", "\n".join(errors))
+            QMessageBox.warning(self, tr("tab_samples.export_errors_title"), "\n".join(errors))
         if exported:
-            QMessageBox.information(self, "Export", f"Exported {exported} sample(s) to:\n{directory}")
+            QMessageBox.information(
+                self, tr("tab_samples.export_title"), tr("tab_samples.exported_n_to", n=exported, directory=directory)
+            )
 
     def delete_unused_samples(self):
         if self._esx is None:
-            QMessageBox.warning(self, "Delete Unused Samples", "No ESX file loaded")
+            QMessageBox.warning(self, tr("tab_samples.delete_unused_samples_title"), tr("tab_samples.no_esx_file_loaded"))
             return
 
         self.apply_changes()
@@ -1120,8 +1136,8 @@ class TabSamples(QWidget):
         if not unused_samples:
             QMessageBox.information(
                 self,
-                "Delete Unused Samples",
-                "No unused samples found."
+                tr("tab_samples.delete_unused_samples_title"),
+                tr("tab_samples.no_unused_samples_found"),
             )
             return
 
@@ -1140,44 +1156,42 @@ class TabSamples(QWidget):
 
         QMessageBox.information(
             self,
-            "Delete Unused Samples",
-            f"Deleted {len(unused_samples)} unused sample(s)."
+            tr("tab_samples.delete_unused_samples_title"),
+            tr("tab_samples.deleted_n_unused_samples", n=len(unused_samples)),
         )
 
     def _confirm_delete_unused_samples(self, unused_samples) -> bool:
         dialog = QDialog(self)
-        dialog.setWindowTitle("Delete Unused Samples")
+        dialog.setWindowTitle(tr("tab_samples.delete_unused_samples_title"))
         dialog.resize(640, 420)
 
         layout = QVBoxLayout(dialog)
-        layout.addWidget(QLabel(
-            f"The following {len(unused_samples)} sample(s) are not used in any pattern:"
-        ))
+        layout.addWidget(QLabel(tr("tab_samples.unused_samples_intro", n=len(unused_samples))))
 
         table = QTableWidget()
         table.setColumnCount(5)
-        table.setHorizontalHeaderLabels(["#", "Name", "Type", "Rate", "Duration"])
+        table.setHorizontalHeaderLabels(self._sample_table_headers())
         table.setRowCount(len(unused_samples))
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
 
         for row, (sample_idx, sample) in enumerate(unused_samples):
-            name = sample.name.strip('\x00').strip() or "(empty)"
-            stype = "Stereo" if sample.is_stereo_original else "Mono"
+            name = sample.name.strip('\x00').strip() or tr("common.empty_placeholder")
+            stype = tr("tab_samples.stereo") if sample.is_stereo_original else tr("tab_samples.mono")
             table.setItem(row, 0, QTableWidgetItem(str(sample_idx)))
             table.setItem(row, 1, QTableWidgetItem(name))
             table.setItem(row, 2, QTableWidgetItem(stype))
             table.setItem(row, 3, QTableWidgetItem(str(sample.sample_rate)))
-            table.setItem(row, 4, QTableWidgetItem(f"{sample.duration_seconds():.3f}s"))
+            table.setItem(row, 4, QTableWidgetItem(tr("tab_samples.duration_value", n=f"{sample.duration_seconds():.3f}")))
 
         layout.addWidget(table)
-        layout.addWidget(QLabel("Delete these samples now? This keeps sample slots in place."))
+        layout.addWidget(QLabel(tr("tab_samples.delete_these_samples_now")))
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Delete Listed Samples")
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(tr("tab_samples.delete_listed_samples"))
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)

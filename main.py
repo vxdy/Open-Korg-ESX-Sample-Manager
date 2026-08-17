@@ -5,6 +5,7 @@ from ui.main_window import MainWindow
 from ui.start_dialog import StartDialog
 from ui.theme import DARK_STYLESHEET
 from ui.error_log import report_error, get_current_esx_path
+from ui.i18n import tr, load_saved_language, set_language
 from esx.app_paths import get_patterns_dir, get_debug_esx_path
 
 
@@ -13,8 +14,8 @@ def _install_excepthook():
         traceback.print_exception(exc_type, exc_value, exc_tb)
         report_error("uncaught", exc_value, get_current_esx_path())
         QMessageBox.critical(
-            None, "Unexpected Error",
-            f"An unexpected error occurred and has been logged:\n\n{exc_value}"
+            None, tr("main.unexpected_error_title"),
+            tr("main.unexpected_error_body", error=exc_value)
         )
 
     sys.excepthook = handle_exception
@@ -26,6 +27,11 @@ if __name__ == "__main__":
     app.setOrganizationName("open-electribe-editor")
     app.setStyle("Fusion")
     app.setStyleSheet(DARK_STYLESHEET)
+
+    # Chosen once at startup (persisted choice, or a guess from the OS
+    # locale) - see ui/i18n.py's module docstring for why language changes
+    # need a restart rather than applying live.
+    set_language(load_saved_language())
 
     _install_excepthook()
 

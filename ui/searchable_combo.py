@@ -4,6 +4,8 @@ from PyQt6.QtWidgets import (
     QAbstractItemView, QComboBox, QFrame, QLineEdit, QListView, QVBoxLayout
 )
 
+from ui.i18n import tr
+
 
 class SearchableComboBox(QComboBox):
     """A closed dropdown (not an editable text field - clicking it opens a
@@ -60,7 +62,7 @@ class SearchableComboBox(QComboBox):
         layout.setSpacing(4)
 
         self._search_edit = QLineEdit()
-        self._search_edit.setPlaceholderText("Search...")
+        self._search_edit.setPlaceholderText(tr("common.search_ellipsis"))
         self._search_edit.textEdited.connect(self._proxy.setFilterFixedString)
         self._search_edit.installEventFilter(self)
         layout.addWidget(self._search_edit)

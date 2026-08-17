@@ -3,6 +3,8 @@ from PyQt6.QtWidgets import QWidget, QSizePolicy
 from PyQt6.QtGui import QPainter, QPen, QColor, QBrush
 from PyQt6.QtCore import Qt, pyqtSignal
 
+from ui.i18n import tr
+
 MARKER_HIT_PX = 7
 
 
@@ -131,7 +133,7 @@ class WaveformWidget(QWidget):
 
         if self._samples is None or len(self._samples) == 0:
             painter.setPen(QColor(150, 150, 150))
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "No audio data")
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, tr("common.no_audio_data"))
             painter.end()
             return
 

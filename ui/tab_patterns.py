@@ -20,40 +20,47 @@ from esx.pattern_transfer import export_pattern, import_pattern
 from esx.app_paths import get_patterns_dir
 from audio.sequencer_engine import SequencerPlaybackEngine
 from ui.error_log import report_error
+from ui.i18n import tr
 from ui import icons
 from ui.searchable_combo import SearchableComboBox
 from ui.theme import ACCENT, BG_FIELD, BG_FIELD_HOVER, BG_PANEL, BORDER, BORDER_LIGHT, TEXT_DIM
 
 
+# The first element of each spec is a tr() key, not already-resolved text:
+# PART_FIELD_SPECS is a module-level (class-body-adjacent) constant built at
+# import time, before main.py has chosen a language (see ui/i18n.py's
+# module docstring) - so it must never hold tr()-resolved text itself. The
+# label is only resolved with tr() where it's actually displayed (see
+# _populate_parts), which runs well after the language is set.
 PART_FIELD_SPECS = [
-    ("Part", None, "label", None),
-    ("Sample", "sample_pointer", "sample", None),
-    ("Level", "level", "int", None),
-    ("Pan", "pan", "int", None),
-    ("Pitch", "pitch", "int", None),
-    ("Glide", "glide", "int", None),
-    ("Filter", "filter_type", "enum", FilterType),
-    ("Cutoff", "cutoff", "int", None),
-    ("Resonance", "resonance", "int", None),
-    ("EG Intensity", "eg_intensity", "int", None),
-    ("EG Time", "eg_time", "int", None),
-    ("Start Point", "start_point", "int", None),
-    ("FX Select", "fx_select", "enum", FxSelect),
-    ("FX Send", "fx_send", "enum", FxSend),
-    ("Roll", "roll", "enum", Roll),
-    ("Amp EG", "amp_eg", "enum", AmpEg),
-    ("Reverse", "reverse", "enum", Reverse),
-    ("Mod Dest", "mod_dest", "enum", ModDest),
-    ("Mod Type", "mod_type", "enum", ModType),
-    ("BPM Sync", "bpm_sync", "enum", BpmSync),
-    ("Mod Speed", "mod_speed", "int", None),
-    ("Mod Depth", "mod_depth", "int", None),
-    ("Motion Seq", "motion_sequence_status", "int", None),
-    ("Slice No.", "slice_number", "int", None),
-    ("Reserved Byte", "reserved_byte", "int", None),
-    ("Reserved Reverse", "reserved_bits_after_reverse", "int", None),
-    ("Reserved Mod", "reserved_bit_after_mod_depth", "int", None),
-    ("Reserved Byte 7", "reserved_bits_byte7", "int", None),
+    ("tab_patterns.field_part", None, "label", None),
+    ("tab_patterns.field_sample", "sample_pointer", "sample", None),
+    ("tab_patterns.field_level", "level", "int", None),
+    ("tab_patterns.field_pan", "pan", "int", None),
+    ("tab_patterns.field_pitch", "pitch", "int", None),
+    ("tab_patterns.field_glide", "glide", "int", None),
+    ("tab_patterns.field_filter", "filter_type", "enum", FilterType),
+    ("tab_patterns.field_cutoff", "cutoff", "int", None),
+    ("tab_patterns.field_resonance", "resonance", "int", None),
+    ("tab_patterns.field_eg_intensity", "eg_intensity", "int", None),
+    ("tab_patterns.field_eg_time", "eg_time", "int", None),
+    ("tab_patterns.field_start_point", "start_point", "int", None),
+    ("tab_patterns.field_fx_select", "fx_select", "enum", FxSelect),
+    ("tab_patterns.field_fx_send", "fx_send", "enum", FxSend),
+    ("tab_patterns.field_roll", "roll", "enum", Roll),
+    ("tab_patterns.field_amp_eg", "amp_eg", "enum", AmpEg),
+    ("tab_patterns.field_reverse", "reverse", "enum", Reverse),
+    ("tab_patterns.field_mod_dest", "mod_dest", "enum", ModDest),
+    ("tab_patterns.field_mod_type", "mod_type", "enum", ModType),
+    ("tab_patterns.field_bpm_sync", "bpm_sync", "enum", BpmSync),
+    ("tab_patterns.field_mod_speed", "mod_speed", "int", None),
+    ("tab_patterns.field_mod_depth", "mod_depth", "int", None),
+    ("tab_patterns.field_motion_seq", "motion_sequence_status", "int", None),
+    ("tab_patterns.field_slice_no", "slice_number", "int", None),
+    ("tab_patterns.field_reserved_byte", "reserved_byte", "int", None),
+    ("tab_patterns.field_reserved_reverse", "reserved_bits_after_reverse", "int", None),
+    ("tab_patterns.field_reserved_mod", "reserved_bit_after_mod_depth", "int", None),
+    ("tab_patterns.field_reserved_byte7", "reserved_bits_byte7", "int", None),
 ]
 
 INT_RANGES = {
@@ -261,7 +268,7 @@ class PianoRollWidget(QWidget):
             label_item.setForeground(QColor("#0b0c0d" if is_default else TEXT_DIM))
             if is_default:
                 label_item.setFont(bold_font)
-            label_item.setToolTip("Default note (C4)" if is_default else "")
+            label_item.setToolTip(tr("tab_patterns.piano_roll_default_note_tooltip") if is_default else "")
             table.setItem(r, 0, label_item)
 
             row_bg = "#232427" if _is_black_key(note) else BG_FIELD
@@ -415,13 +422,13 @@ class TabPatterns(QWidget):
 
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
-        hint = QLabel("Patterns (256) — drag a row onto another to swap slots")
+        hint = QLabel(tr("tab_patterns.patterns_hint"))
         hint.setWordWrap(True)
         hint.setStyleSheet("color: #9aa0a8; font-size: 11px;")
         left_layout.addWidget(hint)
         self._pattern_table = PatternTable()
         self._pattern_table.setColumnCount(3)
-        self._pattern_table.setHorizontalHeaderLabels(["#", "Name", "Tempo"])
+        self._pattern_table.setHorizontalHeaderLabels([tr("common.hash"), tr("common.name"), tr("common.tempo")])
         self._pattern_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._pattern_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._pattern_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -434,8 +441,8 @@ class TabPatterns(QWidget):
         left_layout.addWidget(self._pattern_table)
 
         copy_paste_layout = QHBoxLayout()
-        self._copy_pattern_btn = QPushButton(icons.icon("copy"), "Copy Pattern")
-        self._paste_pattern_btn = QPushButton(icons.icon("paste"), "Paste Pattern")
+        self._copy_pattern_btn = QPushButton(icons.icon("copy"), tr("tab_patterns.copy_pattern"))
+        self._paste_pattern_btn = QPushButton(icons.icon("paste"), tr("tab_patterns.paste_pattern"))
         self._paste_pattern_btn.setEnabled(False)
         self._copy_pattern_btn.clicked.connect(self._copy_pattern)
         self._paste_pattern_btn.clicked.connect(self._paste_pattern)
@@ -443,13 +450,13 @@ class TabPatterns(QWidget):
         copy_paste_layout.addWidget(self._paste_pattern_btn)
         left_layout.addLayout(copy_paste_layout)
 
-        self._clipboard_label = QLabel("Clipboard: (empty)")
+        self._clipboard_label = QLabel(tr("tab_patterns.clipboard_empty"))
         self._clipboard_label.setStyleSheet("color: #9aa0a8; font-size: 11px;")
         left_layout.addWidget(self._clipboard_label)
 
         transfer_layout = QHBoxLayout()
-        self._export_pattern_btn = QPushButton(icons.icon("file-export"), "Export Pattern")
-        self._import_pattern_btn = QPushButton(icons.icon("file-import"), "Import Pattern...")
+        self._export_pattern_btn = QPushButton(icons.icon("file-export"), tr("tab_patterns.export_pattern"))
+        self._import_pattern_btn = QPushButton(icons.icon("file-import"), tr("tab_patterns.import_pattern_ellipsis"))
         self._export_pattern_btn.clicked.connect(self._export_pattern)
         self._import_pattern_btn.clicked.connect(self._import_pattern)
         transfer_layout.addWidget(self._export_pattern_btn)
@@ -467,38 +474,38 @@ class TabPatterns(QWidget):
 
         self._name_edit = QLineEdit()
         self._name_edit.setMaxLength(8)
-        editor_layout.addRow("Name:", self._name_edit)
+        editor_layout.addRow(tr("common.name_colon"), self._name_edit)
 
         self._tempo_spin = QDoubleSpinBox()
         self._tempo_spin.setRange(20.0, 300.0)
         self._tempo_spin.setDecimals(1)
-        editor_layout.addRow("Tempo:", self._tempo_spin)
+        editor_layout.addRow(tr("common.tempo_colon"), self._tempo_spin)
 
         self._swing_combo = QComboBox()
         self._swing_combo.addItems([f"{50+i}%" for i in range(26)])
-        editor_layout.addRow("Swing:", self._swing_combo)
+        editor_layout.addRow(tr("tab_patterns.swing_colon"), self._swing_combo)
 
         self._pattern_length = QComboBox()
         self._pattern_length.addItems([f"{i+1}" for i in range(8)])
         self._pattern_length.currentIndexChanged.connect(self._on_pattern_length_changed)
-        editor_layout.addRow("Pattern Length:", self._pattern_length)
+        editor_layout.addRow(tr("tab_patterns.pattern_length_colon"), self._pattern_length)
 
         self._beat_combo = QComboBox()
         self._beat_combo.addItems(["16th", "32nd", "8Tri", "16Tri"])
-        editor_layout.addRow("Beat:", self._beat_combo)
+        editor_layout.addRow(tr("tab_patterns.beat_colon"), self._beat_combo)
 
         self._fx_chain_combo = QComboBox()
         self._fx_chain_combo.addItems(["None", "1->2", "2->3", "1->2->3"])
-        editor_layout.addRow("FX Chain:", self._fx_chain_combo)
+        editor_layout.addRow(tr("tab_patterns.fx_chain_colon"), self._fx_chain_combo)
 
         self._last_step_combo = QComboBox()
         self._last_step_combo.addItems([str(i+1) for i in range(32)])
         self._last_step_combo.currentIndexChanged.connect(self._on_last_step_changed)
-        editor_layout.addRow("Last Step:", self._last_step_combo)
+        editor_layout.addRow(tr("tab_patterns.last_step_colon"), self._last_step_combo)
 
-        self._right_tabs.addTab(editor_widget, "Pattern Editor")
+        self._right_tabs.addTab(editor_widget, tr("tab_patterns.tab_pattern_editor"))
 
-        self._right_tabs.addTab(self._setup_steps_tab(), "Steps")
+        self._right_tabs.addTab(self._setup_steps_tab(), tr("tab_patterns.tab_steps"))
 
         fx_widget = QWidget()
         fx_layout = QFormLayout(fx_widget)
@@ -511,50 +518,50 @@ class TabPatterns(QWidget):
         for i in range(3):
             combo = QComboBox()
             combo.addItems([e.name for e in FxType])
-            fx_layout.addRow(f"FX {i+1} Type:", combo)
+            fx_layout.addRow(tr("tab_patterns.fx_type_colon", n=i + 1), combo)
             self._fx_combos.append(combo)
 
             edit1 = QSpinBox()
             edit1.setRange(0, 127)
-            fx_layout.addRow(f"FX {i+1} Edit 1:", edit1)
+            fx_layout.addRow(tr("tab_patterns.fx_edit1_colon", n=i + 1), edit1)
             self._fx_edit1.append(edit1)
 
             edit2 = QSpinBox()
             edit2.setRange(0, 127)
-            fx_layout.addRow(f"FX {i+1} Edit 2:", edit2)
+            fx_layout.addRow(tr("tab_patterns.fx_edit2_colon", n=i + 1), edit2)
             self._fx_edit2.append(edit2)
 
             motion = QSpinBox()
             motion.setRange(0, 127)
-            fx_layout.addRow(f"FX {i+1} Motion Seq:", motion)
+            fx_layout.addRow(tr("tab_patterns.fx_motion_seq_colon", n=i + 1), motion)
             self._fx_motion_status.append(motion)
-        self._right_tabs.addTab(fx_widget, "FX")
+        self._right_tabs.addTab(fx_widget, tr("tab_patterns.tab_fx"))
 
         parts_widget = QWidget()
         parts_layout = QVBoxLayout(parts_widget)
-        parts_layout.addWidget(QLabel("Pattern Parts:"))
+        parts_layout.addWidget(QLabel(tr("tab_patterns.pattern_parts_colon")))
         self._parts_table = QTableWidget()
         self._parts_table.setColumnCount(len(PART_FIELD_SPECS))
-        self._parts_table.setHorizontalHeaderLabels([spec[0] for spec in PART_FIELD_SPECS])
+        self._parts_table.setHorizontalHeaderLabels([tr(spec[0]) for spec in PART_FIELD_SPECS])
         self._parts_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._parts_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self._parts_table.horizontalHeader().setStretchLastSection(False)
         self._parts_table.verticalHeader().setVisible(False)
         self._parts_table.setAlternatingRowColors(True)
         parts_layout.addWidget(self._parts_table)
-        self._right_tabs.addTab(parts_widget, "Parts")
+        self._right_tabs.addTab(parts_widget, tr("tab_patterns.tab_parts"))
 
         motion_widget = QWidget()
         motion_layout = QVBoxLayout(motion_widget)
-        motion_layout.addWidget(QLabel("Motion Sequences:"))
+        motion_layout.addWidget(QLabel(tr("tab_patterns.motion_sequences_colon")))
         self._motion_table = QTableWidget()
         self._motion_table.setColumnCount(2)
-        self._motion_table.setHorizontalHeaderLabels(["#", "Operation Number"])
+        self._motion_table.setHorizontalHeaderLabels([tr("common.hash"), tr("tab_patterns.operation_number")])
         self._motion_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._motion_table.verticalHeader().setVisible(False)
         self._motion_table.setAlternatingRowColors(True)
         motion_layout.addWidget(self._motion_table)
-        self._right_tabs.addTab(motion_widget, "Motion Sequences")
+        self._right_tabs.addTab(motion_widget, tr("tab_patterns.tab_motion_sequences"))
 
         splitter.addWidget(self._right_tabs)
         splitter.setSizes([300, 900])
@@ -564,11 +571,7 @@ class TabPatterns(QWidget):
         steps_layout = QVBoxLayout(steps_widget)
         steps_layout.setContentsMargins(16, 16, 16, 16)
 
-        hint = QLabel(
-            "Click a step to toggle it. Each part's sequencer shows one row per bar of the "
-            "pattern's Length (1-8). Keyboard parts can switch to a Piano Roll (the Piano "
-            "button on that part's row) to also set each step's note."
-        )
+        hint = QLabel(tr("tab_patterns.steps_hint"))
         hint.setWordWrap(True)
         hint.setStyleSheet(f"color: {TEXT_DIM}; font-size: 11px;")
         steps_layout.addWidget(hint)
@@ -580,7 +583,7 @@ class TabPatterns(QWidget):
         self._play_btn.toggled.connect(self._on_play_toggled)
         toggle_layout.addWidget(self._play_btn)
         toggle_layout.addSpacing(10)
-        self._sequencer_toggle_btn = QPushButton("Collapse All")
+        self._sequencer_toggle_btn = QPushButton(tr("tab_patterns.collapse_all"))
         self._sequencer_toggle_btn.setCheckable(True)
         self._sequencer_toggle_btn.setChecked(True)
         self._sequencer_toggle_btn.toggled.connect(self._on_sequencer_toggle)
@@ -644,25 +647,25 @@ class TabPatterns(QWidget):
         # The narrow labels (Mute/Solo/Copy/Paste) sit above 30px-wide
         # buttons - too tight for their full word at the row's normal font
         # size, so those specific labels drop a size to avoid clipping.
-        layout.addWidget(label("Mute", 30, font_size=9))
-        layout.addWidget(label("Solo", 30, font_size=9))
-        layout.addWidget(label("Part", PART_LABEL_COL_WIDTH))
-        layout.addWidget(label("Sample", min_width=SAMPLE_COL_WIDTH - 10))
-        layout.addWidget(label("Copy", 30, font_size=9))
-        layout.addWidget(label("Paste", 34, font_size=9))
+        layout.addWidget(label(tr("common.mute"), 30, font_size=9))
+        layout.addWidget(label(tr("common.solo"), 30, font_size=9))
+        layout.addWidget(label(tr("common.part"), PART_LABEL_COL_WIDTH))
+        layout.addWidget(label(tr("common.sample"), min_width=SAMPLE_COL_WIDTH - 10))
+        layout.addWidget(label(tr("common.copy"), 30, font_size=9))
+        layout.addWidget(label(tr("common.paste"), 34, font_size=9))
         layout.addStretch(1)
-        layout.addWidget(label("Seq", 26, font_size=9))
+        layout.addWidget(label(tr("tab_patterns.seq_abbr"), 26, font_size=9))
         return header
 
     def _sequencer_header_labels(self):
-        labels = ["Bar"] + [""] * len(_seq_column_plan)
+        labels = [tr("tab_patterns.bar")] + [""] * len(_seq_column_plan)
         for i, (kind, s) in enumerate(_seq_column_plan):
             if kind == "step":
                 labels[SEQ_FIXED_COLUMNS + i] = str(s + 1)
         return labels
 
     def _on_sequencer_toggle(self, checked):
-        self._sequencer_toggle_btn.setText("Collapse All" if checked else "Expand All")
+        self._sequencer_toggle_btn.setText(tr("tab_patterns.collapse_all") if checked else tr("tab_patterns.expand_all"))
         for part_idx in range(len(self._step_groups)):
             self._set_part_sequencer_expanded(part_idx, checked)
 
@@ -681,7 +684,10 @@ class TabPatterns(QWidget):
 
     def _style_collapse_button(self, btn, expanded):
         btn.setIcon(icons.icon("chevron-down" if expanded else "chevron-right"))
-        btn.setToolTip("Collapse this part's sequencer" if expanded else "Expand this part's sequencer")
+        btn.setToolTip(
+            tr("tab_patterns.collapse_this_part_sequencer") if expanded
+            else tr("tab_patterns.expand_this_part_sequencer")
+        )
 
     def _make_piano_roll_callbacks(self, part):
         def get_note(step):
@@ -723,10 +729,9 @@ class TabPatterns(QWidget):
 
     def _style_play_button(self, playing):
         self._play_btn.setIcon(icons.icon("pause" if playing else "play"))
-        self._play_btn.setText("Pause" if playing else "Play")
+        self._play_btn.setText(tr("common.pause") if playing else tr("common.play"))
         self._play_btn.setToolTip(
-            "Pause the sequencer" if playing else
-            "Play the pattern - uses each part's Level/Pan/Pitch/EG Time/Start Point/Filter and the pattern's BPM"
+            tr("tab_patterns.pause_sequencer_tooltip") if playing else tr("tab_patterns.play_pattern_tooltip")
         )
 
     def _on_play_toggled(self, checked):
@@ -747,8 +752,8 @@ class TabPatterns(QWidget):
         if not ok:
             self._play_btn.setChecked(False)
             QMessageBox.warning(
-                self, "Playback",
-                "Audio playback isn't available (sounddevice not installed or no output device)."
+                self, tr("tab_patterns.playback_title"),
+                tr("tab_patterns.playback_unavailable"),
             )
 
     def _stop_sequencer_playback(self):
@@ -921,24 +926,22 @@ class TabPatterns(QWidget):
 
             piano_roll_btn = None
             if info["kind"] == "gate":
-                piano_roll_btn = QPushButton(icons.icon("music"), "Piano")
+                piano_roll_btn = QPushButton(icons.icon("music"), tr("tab_patterns.piano"))
                 piano_roll_btn.setCheckable(True)
                 piano_roll_btn.setChecked(self._part_piano_roll_mode.get(part_idx, False))
-                piano_roll_btn.setToolTip(
-                    "Switch between the Sequencer grid and a Piano Roll (also sets each step's note)"
-                )
+                piano_roll_btn.setToolTip(tr("tab_patterns.piano_roll_toggle_tooltip"))
                 piano_roll_btn.toggled.connect(lambda checked, i=part_idx: self._on_piano_roll_toggled(i, checked))
                 info_cell_layout.addWidget(piano_roll_btn)
 
             copy_btn = QPushButton(icons.icon("copy"), "")
             copy_btn.setFixedSize(30, 28)
-            copy_btn.setToolTip("Copy steps (all bars)")
+            copy_btn.setToolTip(tr("tab_patterns.copy_steps_tooltip"))
             copy_btn.clicked.connect(lambda _, i=part_idx: self._copy_steps(i))
             info_cell_layout.addWidget(copy_btn)
 
             paste_btn = QPushButton(icons.icon("paste"), "")
             paste_btn.setFixedSize(30, 28)
-            paste_btn.setToolTip("Paste steps (all bars)")
+            paste_btn.setToolTip(tr("tab_patterns.paste_steps_tooltip"))
             paste_btn.setEnabled(False)
             paste_btn.clicked.connect(lambda _, i=part_idx: self._paste_steps(i))
             info_cell_layout.addWidget(paste_btn)
@@ -1408,8 +1411,8 @@ class TabPatterns(QWidget):
         pattern = self._esx.patterns[row]
         self._clipboard_pattern_bytes = pattern.to_bytes()
         name = pattern.name.strip('\x00').strip()
-        self._clipboard_pattern_label = f"{row} - {name}" if name else f"{row} - (empty)"
-        self._clipboard_label.setText(f"Clipboard: {self._clipboard_pattern_label}")
+        self._clipboard_pattern_label = f"{row} - {name}" if name else f"{row} - " + tr("common.empty_placeholder")
+        self._clipboard_label.setText(tr("tab_patterns.clipboard_label", label=self._clipboard_pattern_label))
         self._paste_pattern_btn.setEnabled(True)
 
     def _paste_pattern(self):
@@ -1420,9 +1423,8 @@ class TabPatterns(QWidget):
             return
 
         reply = QMessageBox.question(
-            self, "Paste Pattern",
-            f"Overwrite pattern {row} with the copied pattern "
-            f"({self._clipboard_pattern_label})?",
+            self, tr("tab_patterns.paste_pattern_title"),
+            tr("tab_patterns.paste_pattern_confirm", row=row, label=self._clipboard_pattern_label),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -1439,18 +1441,18 @@ class TabPatterns(QWidget):
 
     def _export_pattern(self):
         if self._esx is None:
-            QMessageBox.warning(self, "Export Pattern", "No ESX file loaded")
+            QMessageBox.warning(self, tr("tab_patterns.export_pattern_title"), tr("tab_samples.no_esx_file_loaded"))
             return
         row = self._pattern_table.currentRow()
         if not (0 <= row < len(self._esx.patterns)):
-            QMessageBox.warning(self, "Export Pattern", "No pattern selected")
+            QMessageBox.warning(self, tr("tab_patterns.export_pattern_title"), tr("tab_patterns.no_pattern_selected"))
             return
         if self._current_pattern is self._esx.patterns[row]:
             self.apply_changes()
 
         pattern = self._esx.patterns[row]
         if pattern.is_empty():
-            QMessageBox.information(self, "Export Pattern", "Pattern is empty, nothing to export.")
+            QMessageBox.information(self, tr("tab_patterns.export_pattern_title"), tr("tab_patterns.pattern_empty_nothing_to_export"))
             return
 
         name = pattern.name.strip('\x00').strip() or f"pattern_{row}"
@@ -1458,20 +1460,20 @@ class TabPatterns(QWidget):
         try:
             export_pattern(self._esx, row, path)
             QMessageBox.information(
-                self, "Export Pattern",
-                f"Pattern (with its referenced samples) saved to:\n{path}"
+                self, tr("tab_patterns.export_pattern_title"),
+                tr("tab_patterns.pattern_saved_to", path=path)
             )
         except Exception as exc:
             report_error("export_pattern", exc)
-            QMessageBox.critical(self, "Export Error", str(exc))
+            QMessageBox.critical(self, tr("tab_samples.export_error_title"), str(exc))
 
     def _import_pattern(self):
         if self._esx is None:
-            QMessageBox.warning(self, "Import Pattern", "No ESX file loaded")
+            QMessageBox.warning(self, tr("tab_patterns.import_pattern_title"), tr("tab_samples.no_esx_file_loaded"))
             return
         path, _ = QFileDialog.getOpenFileName(
-            self, "Import Pattern", get_patterns_dir(),
-            "Electribe Pattern Files (*.esxpat);;All Files (*)"
+            self, tr("tab_patterns.import_pattern_title"), get_patterns_dir(),
+            f"{tr('common.esxpat_files_filter')};;{tr('common.all_files_filter')}"
         )
         if not path:
             return
@@ -1482,19 +1484,22 @@ class TabPatterns(QWidget):
         currently selected pattern slot. Used by both the Import Pattern
         button and the Pattern Browser (double-clicking a saved pattern)."""
         if self._esx is None:
-            QMessageBox.warning(self, "Import Pattern", "No ESX file loaded")
+            QMessageBox.warning(self, tr("tab_patterns.import_pattern_title"), tr("tab_samples.no_esx_file_loaded"))
             return
         row = self._pattern_table.currentRow()
         if not (0 <= row < len(self._esx.patterns)):
-            QMessageBox.warning(self, "Import Pattern", "No target pattern slot selected")
+            QMessageBox.warning(self, tr("tab_patterns.import_pattern_title"), tr("tab_patterns.no_target_slot_selected"))
             return
 
         existing = self._esx.patterns[row]
         if not existing.is_empty():
             existing_name = existing.name.strip(chr(0)).strip()
             reply = QMessageBox.question(
-                self, "Import Pattern",
-                f"Overwrite pattern {row} ({existing_name or '(empty)'}) with the imported pattern?",
+                self, tr("tab_patterns.import_pattern_title"),
+                tr(
+                    "tab_patterns.overwrite_pattern_confirm",
+                    row=row, name=existing_name or tr("common.empty_placeholder"),
+                ),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if reply != QMessageBox.StandardButton.Yes:
@@ -1504,7 +1509,7 @@ class TabPatterns(QWidget):
             new_pattern, warnings = import_pattern(self._esx, path, row)
         except Exception as exc:
             report_error("import_pattern", exc)
-            QMessageBox.critical(self, "Import Error", str(exc))
+            QMessageBox.critical(self, tr("tab_patterns.import_error_title"), str(exc))
             return
 
         self._set_pattern_row(row, new_pattern)
@@ -1514,9 +1519,11 @@ class TabPatterns(QWidget):
             self._populate_editor(new_pattern)
 
         if warnings:
-            QMessageBox.warning(self, "Import Pattern", "\n".join(warnings))
+            QMessageBox.warning(self, tr("tab_patterns.import_pattern_title"), "\n".join(warnings))
         else:
-            QMessageBox.information(self, "Import Pattern", f"Pattern imported into slot {row}.")
+            QMessageBox.information(
+                self, tr("tab_patterns.import_pattern_title"), tr("tab_patterns.pattern_imported_into_slot", row=row)
+            )
 
     def _populate_editor(self, pattern):
         self._name_edit.setText(pattern.name.strip('\x00'))

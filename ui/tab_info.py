@@ -1,6 +1,8 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QGroupBox, QGridLayout
 from PyQt6.QtCore import Qt
 
+from ui.i18n import tr
+
 
 class TabInfo(QWidget):
     def __init__(self):
@@ -14,7 +16,7 @@ class TabInfo(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         # File statistics group
-        stats_group = QGroupBox("File Statistics")
+        stats_group = QGroupBox(tr("tab_info.file_statistics"))
         stats_layout = QGridLayout(stats_group)
         stats_layout.setHorizontalSpacing(24)
         stats_layout.setVerticalSpacing(10)
@@ -22,13 +24,13 @@ class TabInfo(QWidget):
 
         self._labels = {}
         rows = [
-            ("patterns_used", "Patterns Used:"),
-            ("samples_used", "Samples Used:"),
-            ("mono_samples", "Mono Samples:"),
-            ("stereo_samples", "Stereo Samples:"),
-            ("songs_used", "Songs Used:"),
-            ("sample_memory", "Sample Memory Used:"),
-            ("sample_memory_pct", "Sample Memory %:"),
+            ("patterns_used", tr("tab_info.patterns_used")),
+            ("samples_used", tr("tab_info.samples_used")),
+            ("mono_samples", tr("tab_info.mono_samples")),
+            ("stereo_samples", tr("tab_info.stereo_samples")),
+            ("songs_used", tr("tab_info.songs_used")),
+            ("sample_memory", tr("tab_info.sample_memory_used")),
+            ("sample_memory_pct", tr("tab_info.sample_memory_pct")),
         ]
 
         for row_idx, (key, label_text) in enumerate(rows):
@@ -61,5 +63,5 @@ class TabInfo(QWidget):
         self._labels["mono_samples"].setText(f"{mono_samples} / 256")
         self._labels["stereo_samples"].setText(f"{stereo_samples} / 128")
         self._labels["songs_used"].setText(f"{used_songs} / {NUM_SONGS}")
-        self._labels["sample_memory"].setText(f"{mem_bytes:,} bytes")
+        self._labels["sample_memory"].setText(tr("tab_info.bytes_value", n=f"{mem_bytes:,}"))
         self._labels["sample_memory_pct"].setText(f"{mem_pct:.1f}%")

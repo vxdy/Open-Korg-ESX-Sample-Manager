@@ -8,6 +8,8 @@ from PyQt6.QtCore import Qt
 from esx.constants import (
     EnabledFlag, ArpeggiatorControl, AudioInMode, MidiClock, PitchBendRange
 )
+from ui.i18n import tr, AVAILABLE_LANGUAGES, current_language, save_language
+from ui.theme import TEXT_DIM
 
 
 class TabGlobal(QWidget):
@@ -23,49 +25,70 @@ class TabGlobal(QWidget):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         layout.addWidget(splitter)
 
-        # Left: main parameters form
+        # Left: app settings + main parameters form
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
-        form_group = QGroupBox("Main Parameters")
+
+        app_group = QGroupBox(tr("tab_global.app_settings"))
+        app_form = QFormLayout(app_group)
+        app_form.setSpacing(10)
+        app_form.setContentsMargins(10, 14, 10, 10)
+
+        self._language_combo = QComboBox()
+        self._language_codes = list(AVAILABLE_LANGUAGES.keys())
+        self._language_combo.addItems([AVAILABLE_LANGUAGES[code] for code in self._language_codes])
+        self._language_combo.setCurrentIndex(max(0, self._language_codes.index(current_language())))
+        self._language_combo.currentIndexChanged.connect(self._on_language_changed)
+        app_form.addRow(tr("tab_global.language"), self._language_combo)
+
+        self._language_hint = QLabel(tr("tab_global.language_restart_hint"))
+        self._language_hint.setStyleSheet(f"color: {TEXT_DIM}; font-size: 11px;")
+        self._language_hint.setWordWrap(True)
+        self._language_hint.setVisible(False)
+        app_form.addRow("", self._language_hint)
+
+        left_layout.addWidget(app_group)
+
+        form_group = QGroupBox(tr("tab_global.main_parameters"))
         form = QFormLayout(form_group)
         form.setSpacing(10)
         form.setContentsMargins(10, 14, 10, 10)
 
         self._memory_protect = QComboBox()
         self._memory_protect.addItems([e.name for e in EnabledFlag])
-        form.addRow("Memory Protect:", self._memory_protect)
+        form.addRow(tr("tab_global.memory_protect"), self._memory_protect)
 
         self._arp_control = QComboBox()
         self._arp_control.addItems([e.name for e in ArpeggiatorControl])
-        form.addRow("Arpeggiator Control:", self._arp_control)
+        form.addRow(tr("tab_global.arpeggiator_control"), self._arp_control)
 
         self._audio_in_mode = QComboBox()
         self._audio_in_mode.addItems([e.name for e in AudioInMode])
-        form.addRow("Audio In Mode:", self._audio_in_mode)
+        form.addRow(tr("tab_global.audio_in_mode"), self._audio_in_mode)
 
         self._midi_clock = QComboBox()
         self._midi_clock.addItems([e.name for e in MidiClock])
-        form.addRow("MIDI Clock:", self._midi_clock)
+        form.addRow(tr("tab_global.midi_clock"), self._midi_clock)
 
         self._note_msg = QComboBox()
         self._note_msg.addItems([e.name for e in EnabledFlag])
-        form.addRow("Note Message:", self._note_msg)
+        form.addRow(tr("tab_global.note_message"), self._note_msg)
 
         self._sys_ex = QComboBox()
         self._sys_ex.addItems([e.name for e in EnabledFlag])
-        form.addRow("SysEx:", self._sys_ex)
+        form.addRow(tr("tab_global.sysex"), self._sys_ex)
 
         self._cc_enabled = QComboBox()
         self._cc_enabled.addItems([e.name for e in EnabledFlag])
-        form.addRow("Control Change:", self._cc_enabled)
+        form.addRow(tr("tab_global.control_change"), self._cc_enabled)
 
         self._pc_enabled = QComboBox()
         self._pc_enabled.addItems([e.name for e in EnabledFlag])
-        form.addRow("Program Change:", self._pc_enabled)
+        form.addRow(tr("tab_global.program_change"), self._pc_enabled)
 
         self._pitch_bend = QComboBox()
         self._pitch_bend.addItems([e.name for e in PitchBendRange])
-        form.addRow("Pitch Bend Range:", self._pitch_bend)
+        form.addRow(tr("tab_global.pitch_bend_range"), self._pitch_bend)
 
         left_layout.addWidget(form_group)
         left_layout.addStretch()
@@ -77,35 +100,40 @@ class TabGlobal(QWidget):
         # MIDI CC Assignments tab
         self._cc_table = QTableWidget()
         self._cc_table.setColumnCount(2)
-        self._cc_table.setHorizontalHeaderLabels(["Name", "Value"])
+        self._cc_table.setHorizontalHeaderLabels([tr("common.name"), tr("common.value")])
         self._cc_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._cc_table.verticalHeader().setVisible(False)
         self._cc_table.setAlternatingRowColors(True)
         self._cc_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        right_tabs.addTab(self._cc_table, "MIDI CC Assignments")
+        right_tabs.addTab(self._cc_table, tr("tab_global.midi_cc_assignments"))
 
         # Part Note Numbers tab
         self._pnn_table = QTableWidget()
         self._pnn_table.setColumnCount(2)
-        self._pnn_table.setHorizontalHeaderLabels(["Part", "Note Number"])
+        self._pnn_table.setHorizontalHeaderLabels([tr("tab_global.part"), tr("tab_global.note_number")])
         self._pnn_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._pnn_table.verticalHeader().setVisible(False)
         self._pnn_table.setAlternatingRowColors(True)
         self._pnn_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        right_tabs.addTab(self._pnn_table, "Part Note Numbers")
+        right_tabs.addTab(self._pnn_table, tr("tab_global.part_note_numbers"))
 
         # Pattern Set Parameters tab
         self._psp_table = QTableWidget()
         self._psp_table.setColumnCount(2)
-        self._psp_table.setHorizontalHeaderLabels(["Index", "Pattern Pointer"])
+        self._psp_table.setHorizontalHeaderLabels([tr("tab_global.index"), tr("tab_global.pattern_pointer")])
         self._psp_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self._psp_table.verticalHeader().setVisible(False)
         self._psp_table.setAlternatingRowColors(True)
         self._psp_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        right_tabs.addTab(self._psp_table, "Pattern Set Parameters")
+        right_tabs.addTab(self._psp_table, tr("tab_global.pattern_set_parameters"))
 
         splitter.addWidget(right_tabs)
         splitter.setSizes([300, 600])
+
+    def _on_language_changed(self, index):
+        code = self._language_codes[index]
+        save_language(code)
+        self._language_hint.setVisible(code != current_language())
 
     def update_data(self, gp):
         self._gp = gp

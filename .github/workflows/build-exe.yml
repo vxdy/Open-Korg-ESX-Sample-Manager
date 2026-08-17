@@ -38,6 +38,7 @@ jobs:
             --collect-all PyQt6 \
             --collect-all qtawesome \
             --collect-all sounddevice \
+            --add-data "ui/locales;ui/locales" \
             main.py
 
       - name: Upload build artifact

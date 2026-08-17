@@ -9,6 +9,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QFileSystemWatcher, QByteArray, QMimeDa
 
 from esx.app_paths import get_patterns_dir
 from esx.pattern_transfer import read_pattern_summary
+from ui.i18n import tr
 from ui import icons
 
 PATTERN_FILE_MIME_TYPE = "application/x-esx-pattern-file"
@@ -55,17 +56,16 @@ class PatternBrowser(QWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
-        hint = QLabel(
-            "Double-click to import into the selected slot, or drag onto a "
-            "pattern row to replace it. Right-click for more options."
-        )
+        hint = QLabel(tr("pattern_browser.hint"))
         hint.setWordWrap(True)
         hint.setStyleSheet("color: gray; font-size: 10px;")
         layout.addWidget(hint)
 
         self._file_table = SavedPatternTable()
         self._file_table.setColumnCount(3)
-        self._file_table.setHorizontalHeaderLabels(["Pattern", "BPM", "File"])
+        self._file_table.setHorizontalHeaderLabels(
+            [tr("pattern_browser.pattern"), tr("pattern_browser.bpm"), tr("pattern_browser.file")]
+        )
         self._file_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._file_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._file_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -104,11 +104,11 @@ class PatternBrowser(QWidget):
 
             summary = read_pattern_summary(filepath)
             if summary is not None:
-                name = summary["name"].strip() or "(unnamed)"
+                name = summary["name"].strip() or tr("pattern_browser.unnamed")
                 tempo = summary["tempo"]
                 bpm_text = f"{tempo:.1f}" if isinstance(tempo, (int, float)) else "?"
             else:
-                name = "(invalid pattern file)"
+                name = tr("pattern_browser.invalid_pattern_file")
                 bpm_text = "?"
 
             name_item = QTableWidgetItem(name)
@@ -130,10 +130,10 @@ class PatternBrowser(QWidget):
         filepath = self._files[row]
 
         menu = QMenu(self)
-        import_action = menu.addAction(icons.icon("file-import"), "Import into Selected Pattern...")
-        export_action = menu.addAction(icons.icon("file-export"), "Export As...")
+        import_action = menu.addAction(icons.icon("file-import"), tr("pattern_browser.import_into_selected"))
+        export_action = menu.addAction(icons.icon("file-export"), tr("pattern_browser.export_as"))
         menu.addSeparator()
-        delete_action = menu.addAction(icons.icon("trash"), "Delete")
+        delete_action = menu.addAction(icons.icon("trash"), tr("common.delete"))
 
         action = menu.exec(self._file_table.viewport().mapToGlobal(pos))
         if action == import_action:
@@ -146,21 +146,21 @@ class PatternBrowser(QWidget):
     def _export_as(self, filepath: str):
         default_path = os.path.join(os.path.expanduser("~"), os.path.basename(filepath))
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export Pattern As", default_path,
-            "Electribe Pattern Files (*.esxpat);;All Files (*)"
+            self, tr("pattern_browser.export_pattern_as_title"), default_path,
+            tr("common.esxpat_files_filter") + ";;" + tr("common.all_files_filter")
         )
         if not path:
             return
         try:
             shutil.copyfile(filepath, path)
         except OSError as exc:
-            QMessageBox.critical(self, "Export Error", str(exc))
+            QMessageBox.critical(self, tr("tab_samples.export_error_title"), str(exc))
 
     def _delete_pattern_file(self, filepath: str):
         name = os.path.basename(filepath)
         reply = QMessageBox.question(
-            self, "Delete Pattern",
-            f"Delete saved pattern '{name}'? This cannot be undone.",
+            self, tr("pattern_browser.delete_pattern_title"),
+            tr("pattern_browser.delete_pattern_confirm", name=name),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -168,6 +168,6 @@ class PatternBrowser(QWidget):
         try:
             os.remove(filepath)
         except OSError as exc:
-            QMessageBox.critical(self, "Delete Error", str(exc))
+            QMessageBox.critical(self, tr("pattern_browser.delete_error_title"), str(exc))
             return
         self._reload()

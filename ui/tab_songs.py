@@ -5,6 +5,8 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
+from ui.i18n import tr
+
 
 class TabSongs(QWidget):
     def __init__(self):
@@ -23,12 +25,12 @@ class TabSongs(QWidget):
         # Left: song list
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
-        title = QLabel("Songs (64)")
+        title = QLabel(tr("tab_songs.songs_count"))
         title.setStyleSheet("font-weight: 600; color: #9aa0a8;")
         left_layout.addWidget(title)
         self._song_table = QTableWidget()
         self._song_table.setColumnCount(3)
-        self._song_table.setHorizontalHeaderLabels(["#", "Name", "Events"])
+        self._song_table.setHorizontalHeaderLabels([tr("common.hash"), tr("common.name"), tr("tab_songs.events")])
         self._song_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._song_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._song_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -45,52 +47,52 @@ class TabSongs(QWidget):
         editor_widget = QWidget()
         editor_layout = QVBoxLayout(editor_widget)
 
-        info_group = QGroupBox("Song Properties")
+        info_group = QGroupBox(tr("tab_songs.song_properties"))
         form = QFormLayout(info_group)
         form.setSpacing(10)
         form.setContentsMargins(10, 14, 10, 10)
         self._name_edit = QLineEdit()
         self._name_edit.setMaxLength(8)
-        form.addRow("Name:", self._name_edit)
+        form.addRow(tr("common.name_colon"), self._name_edit)
         self._tempo_label = QLabel("—")
-        form.addRow("Tempo:", self._tempo_label)
+        form.addRow(tr("common.tempo_colon"), self._tempo_label)
         self._song_length_label = QLabel("—")
-        form.addRow("Song Length:", self._song_length_label)
+        form.addRow(tr("tab_songs.song_length"), self._song_length_label)
         self._num_events_label = QLabel("—")
-        form.addRow("Events (original):", self._num_events_label)
+        form.addRow(tr("tab_songs.events_original"), self._num_events_label)
         self._next_song_label = QLabel("—")
-        form.addRow("Next Song:", self._next_song_label)
+        form.addRow(tr("tab_songs.next_song"), self._next_song_label)
         editor_layout.addWidget(info_group)
         editor_layout.addStretch()
-        right_tabs.addTab(editor_widget, "Song Editor")
+        right_tabs.addTab(editor_widget, tr("tab_songs.song_editor"))
 
         # Song events tab
         events_widget = QWidget()
         events_layout = QVBoxLayout(events_widget)
-        events_layout.addWidget(QLabel("Song Events:"))
+        events_layout.addWidget(QLabel(tr("tab_songs.song_events_colon")))
         self._events_table = QTableWidget()
         self._events_table.setColumnCount(2)
-        self._events_table.setHorizontalHeaderLabels(["#", "Raw Data"])
+        self._events_table.setHorizontalHeaderLabels([tr("common.hash"), tr("tab_songs.raw_data")])
         self._events_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._events_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self._events_table.verticalHeader().setVisible(False)
         self._events_table.setAlternatingRowColors(True)
         events_layout.addWidget(self._events_table)
-        right_tabs.addTab(events_widget, "Song Events")
+        right_tabs.addTab(events_widget, tr("tab_songs.song_events"))
 
         # Song patterns tab
         patterns_widget = QWidget()
         patterns_layout = QVBoxLayout(patterns_widget)
-        patterns_layout.addWidget(QLabel("Song Pattern Offsets:"))
+        patterns_layout.addWidget(QLabel(tr("tab_songs.song_pattern_offsets_colon")))
         self._patterns_table = QTableWidget()
         self._patterns_table.setColumnCount(2)
-        self._patterns_table.setHorizontalHeaderLabels(["Index", "Note Offset"])
+        self._patterns_table.setHorizontalHeaderLabels([tr("tab_global.index"), tr("tab_songs.note_offset")])
         self._patterns_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._patterns_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self._patterns_table.verticalHeader().setVisible(False)
         self._patterns_table.setAlternatingRowColors(True)
         patterns_layout.addWidget(self._patterns_table)
-        right_tabs.addTab(patterns_widget, "Song Patterns")
+        right_tabs.addTab(patterns_widget, tr("tab_songs.song_patterns"))
 
         splitter.addWidget(right_tabs)
         splitter.setSizes([250, 750])
@@ -103,7 +105,7 @@ class TabSongs(QWidget):
         for i, s in enumerate(songs):
             self._song_table.setItem(i, 0, QTableWidgetItem(str(i)))
             name = s.name.strip('\x00').strip()
-            self._song_table.setItem(i, 1, QTableWidgetItem(name if name else "(empty)"))
+            self._song_table.setItem(i, 1, QTableWidgetItem(name if name else tr("common.empty_placeholder")))
             self._song_table.setItem(i, 2, QTableWidgetItem(str(len(s.song_events))))
 
     def _on_song_selected(self):
