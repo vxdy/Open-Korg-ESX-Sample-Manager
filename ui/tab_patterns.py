@@ -150,6 +150,179 @@ MUTE_ON_COLOR = "#e5484d"
 SOLO_ON_COLOR = "#f5c451"
 PLAYHEAD_COLOR = "#ffd166"
 
+# Piano Roll (Keyboard parts only) - an alternate view of the exact same
+# sequence_data_gate/sequence_data_note bytes the plain on/off grid edits,
+# just laid out as notes (rows) x steps (columns) instead of one on/off
+# button per step. Covers the full raw byte range (0-127) sequence_data_note
+# can hold, not just a "musical" subset, so no existing pattern data - even
+# an unusual note value written by other software - is ever hidden.
+PIANO_ROLL_LOW_NOTE = 0
+PIANO_ROLL_HIGH_NOTE = 127
+# The note a plain Steps-grid toggle assigns to a freshly-enabled Keyboard
+# step (see TabPatterns._on_step_toggled) - C4 (MIDI 60), matching the
+# fallback sequencer_engine._get_step_note already used for playback.
+DEFAULT_KEYBOARD_NOTE = 60
+PIANO_ROLL_ROW_HEIGHT = 14
+PIANO_ROLL_KEY_COL_WIDTH = 42
+PIANO_ROLL_AREA_HEIGHT = 260
+
+_NOTE_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+
+
+def _note_name(note: int) -> str:
+    return f"{_NOTE_NAMES[note % 12]}{note // 12 - 1}"
+
+
+def _is_black_key(note: int) -> bool:
+    return (note % 12) in (1, 3, 6, 8, 10)
+
+
+def _piano_roll_column_plan(num_bars, steps_per_bar):
+    """Continuous (all-bars-back-to-back) column plan for the Piano Roll:
+    every bar's steps sit side by side in one row instead of the plain
+    grid's one-row-per-bar layout, so besides the plain grid's group-of-4
+    divider every bar boundary also gets its own (bolder) divider. Global
+    step numbering matches the plain grid exactly (bar_index * steps_per_bar
+    + col), capped at STEP_DATA_CAPACITY the same way."""
+    total_steps = min(num_bars * steps_per_bar, STEP_DATA_CAPACITY)
+    plan = []
+    for s in range(total_steps):
+        plan.append(("step", s))
+        if s == total_steps - 1:
+            continue
+        if (s + 1) % steps_per_bar == 0:
+            plan.append(("divider", "bar"))
+        elif (s + 1) % STEPS_GROUP_SIZE == 0:
+            plan.append(("divider", "group"))
+    return plan, total_steps
+
+
+class PianoRollWidget(QWidget):
+    """Piano-roll step editor for one Keyboard part, swapped in for that
+    part's plain on/off Sequencer grid (see TabPatterns._on_piano_roll_toggled).
+    Rows are MIDI notes (highest pitch at the top, as in a DAW piano roll);
+    columns are steps, using the same global_step numbering as the plain
+    grid - so switching views back and forth edits the very same
+    sequence_data_note/sequence_data_gate bytes, never a separate copy. A
+    Keyboard part is monophonic per step (one note byte + one gate byte,
+    see esx.pattern.PartKeyboard), so each step column can only have one lit
+    cell - clicking a cell sets that step's note to the row's pitch and
+    turns its gate on; clicking the already-lit cell for that step turns
+    the gate back off, the same toggle semantics as the plain grid."""
+
+    edited = pyqtSignal()
+
+    def __init__(self, get_note, set_note, get_gate, set_gate, num_bars, steps_per_bar, parent=None):
+        super().__init__(parent)
+        self._get_note = get_note
+        self._set_note = set_note
+        self._get_gate = get_gate
+        self._set_gate = set_gate
+        self._notes = list(range(PIANO_ROLL_HIGH_NOTE, PIANO_ROLL_LOW_NOTE - 1, -1))
+        self._plan, self._total_steps = _piano_roll_column_plan(num_bars, steps_per_bar)
+        self._col_step = {1 + i: s for i, (kind, s) in enumerate(self._plan) if kind == "step"}
+        self._step_col = {s: c for c, s in self._col_step.items()}
+        self._table = None
+        self._build_ui()
+        self.refresh()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        table = QTableWidget()
+        table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setAlternatingRowColors(False)
+        table.setRowCount(len(self._notes))
+        table.setColumnCount(1 + len(self._plan))
+        table.verticalHeader().setVisible(False)
+        table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        table.verticalHeader().setDefaultSectionSize(PIANO_ROLL_ROW_HEIGHT)
+        table.verticalHeader().setMinimumSectionSize(1)
+        table.horizontalHeader().setMinimumSectionSize(1)
+
+        headers = [""] * (1 + len(self._plan))
+        for col, step in self._col_step.items():
+            headers[col] = str(step + 1)
+        table.setHorizontalHeaderLabels(headers)
+
+        bold_font = QFont()
+        bold_font.setBold(True)
+
+        for r, note in enumerate(self._notes):
+            is_default = note == DEFAULT_KEYBOARD_NOTE
+            label_item = QTableWidgetItem(_note_name(note))
+            label_item.setFlags(Qt.ItemFlag.NoItemFlags)
+            label_item.setTextAlignment(int(Qt.AlignmentFlag.AlignCenter))
+            label_bg = ACCENT if is_default else ("#1c1d20" if _is_black_key(note) else "#303236")
+            label_item.setBackground(QColor(label_bg))
+            label_item.setForeground(QColor("#0b0c0d" if is_default else TEXT_DIM))
+            if is_default:
+                label_item.setFont(bold_font)
+            label_item.setToolTip("Default note (C4)" if is_default else "")
+            table.setItem(r, 0, label_item)
+
+            row_bg = "#232427" if _is_black_key(note) else BG_FIELD
+            for i, (kind, s) in enumerate(self._plan):
+                col = 1 + i
+                item = QTableWidgetItem("")
+                if kind == "divider":
+                    item.setFlags(Qt.ItemFlag.NoItemFlags)
+                    item.setBackground(QColor(BORDER_LIGHT if s == "bar" else BORDER))
+                else:
+                    item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                    item.setBackground(QColor(row_bg))
+                table.setItem(r, col, item)
+
+        table.setColumnWidth(0, PIANO_ROLL_KEY_COL_WIDTH)
+        for i, (kind, s) in enumerate(self._plan):
+            table.setColumnWidth(1 + i, DIVIDER_COL_WIDTH if kind == "divider" else STEP_COL_WIDTH)
+
+        table.cellClicked.connect(self._on_cell_clicked)
+        self._table = table
+        layout.addWidget(table)
+
+        default_row = self._notes.index(DEFAULT_KEYBOARD_NOTE)
+        anchor_row = max(0, default_row - 5)
+        QTimer.singleShot(0, lambda: table.scrollToItem(
+            table.item(anchor_row, 0), QAbstractItemView.ScrollHint.PositionAtTop
+        ))
+
+    def _on_cell_clicked(self, row, col):
+        step = self._col_step.get(col)
+        if step is None or not (0 <= row < len(self._notes)):
+            return
+        note = self._notes[row]
+        currently_on = self._get_gate(step) and self._get_note(step) == note
+        if currently_on:
+            self._set_gate(step, False)
+        else:
+            self._set_note(step, note)
+            self._set_gate(step, True)
+        self._refresh_column(step)
+        self.edited.emit()
+
+    def refresh(self):
+        for step in self._step_col:
+            self._refresh_column(step)
+
+    def _refresh_column(self, step):
+        col = self._step_col.get(step)
+        if col is None or self._table is None:
+            return
+        gate_on = self._get_gate(step)
+        active_note = self._get_note(step) if gate_on else None
+        for r, note in enumerate(self._notes):
+            item = self._table.item(r, col)
+            if item is None:
+                continue
+            if active_note is not None and note == active_note:
+                item.setBackground(QColor(STEP_ON_COLOR))
+            else:
+                item.setBackground(QColor("#232427" if _is_black_key(note) else BG_FIELD))
+
 
 class PatternTable(QTableWidget):
     """Pattern list where dragging one row onto another swaps their
@@ -221,6 +394,8 @@ class TabPatterns(QWidget):
         self._step_groups = []
         self._step_buttons = {}
         self._part_sequencer_expanded = {}
+        self._part_piano_roll_mode = {}
+        self._piano_roll_widgets = {}
         self._step_clipboard = None
         self._solo_bits = set()
         self._pre_solo_mute_status = None
@@ -391,7 +566,8 @@ class TabPatterns(QWidget):
 
         hint = QLabel(
             "Click a step to toggle it. Each part's sequencer shows one row per bar of the "
-            "pattern's Length (1-8)."
+            "pattern's Length (1-8). Keyboard parts can switch to a Piano Roll (the Piano "
+            "button on that part's row) to also set each step's note."
         )
         hint.setWordWrap(True)
         hint.setStyleSheet(f"color: {TEXT_DIM}; font-size: 11px;")
@@ -506,6 +682,44 @@ class TabPatterns(QWidget):
     def _style_collapse_button(self, btn, expanded):
         btn.setIcon(icons.icon("chevron-down" if expanded else "chevron-right"))
         btn.setToolTip("Collapse this part's sequencer" if expanded else "Expand this part's sequencer")
+
+    def _make_piano_roll_callbacks(self, part):
+        def get_note(step):
+            data = part.sequence_data_note.data
+            return data[step] if step < len(data) else DEFAULT_KEYBOARD_NOTE
+
+        def set_note(step, note):
+            data = part.sequence_data_note.data
+            if step < len(data):
+                data[step] = max(0, min(127, note))
+
+        def get_gate(step):
+            data = part.sequence_data_gate.data
+            return step < len(data) and data[step] != 0
+
+        def set_gate(step, on):
+            data = part.sequence_data_gate.data
+            if step < len(data):
+                data[step] = 1 if on else 0
+
+        return get_note, set_note, get_gate, set_gate
+
+    def _on_piano_roll_toggled(self, part_idx, checked):
+        self._part_piano_roll_mode[part_idx] = checked
+        if self._current_pattern is None:
+            return
+        self._stop_sequencer_playback()
+        # Switching views rebuilds the whole Steps grid (_populate_steps),
+        # which otherwise also resets the step clipboard - preserve it
+        # across the rebuild so toggling Piano Roll doesn't silently drop
+        # whatever the user had copied.
+        saved_clipboard = self._step_clipboard
+        self._populate_steps(self._current_pattern)
+        self._step_clipboard = saved_clipboard
+        self._refresh_paste_buttons()
+
+    def _on_piano_roll_edited(self, part_idx):
+        self._refresh_sequencer_playback()
 
     def _style_play_button(self, playing):
         self._play_btn.setIcon(icons.icon("pause" if playing else "play"))
@@ -630,6 +844,7 @@ class TabPatterns(QWidget):
 
         self._step_groups = []
         self._step_buttons = {}
+        self._piano_roll_widgets = {}
         self._playhead_step = None
         # One info row per part, followed by an inline column-header row
         # (Bar / step numbers) and then that part's bar rows (collapsed/
@@ -704,6 +919,17 @@ class TabPatterns(QWidget):
             else:
                 info_cell_layout.addWidget(QLabel("-"))
 
+            piano_roll_btn = None
+            if info["kind"] == "gate":
+                piano_roll_btn = QPushButton(icons.icon("music"), "Piano")
+                piano_roll_btn.setCheckable(True)
+                piano_roll_btn.setChecked(self._part_piano_roll_mode.get(part_idx, False))
+                piano_roll_btn.setToolTip(
+                    "Switch between the Sequencer grid and a Piano Roll (also sets each step's note)"
+                )
+                piano_roll_btn.toggled.connect(lambda checked, i=part_idx: self._on_piano_roll_toggled(i, checked))
+                info_cell_layout.addWidget(piano_roll_btn)
+
             copy_btn = QPushButton(icons.icon("copy"), "")
             copy_btn.setFixedSize(30, 28)
             copy_btn.setToolTip("Copy steps (all bars)")
@@ -735,65 +961,83 @@ class TabPatterns(QWidget):
             self._step_groups[-1].update({
                 "mute_btn": mute_btn, "solo_btn": solo_btn, "sample_combo": sample_combo,
                 "copy_btn": copy_btn, "paste_btn": paste_btn, "collapse_btn": collapse_btn,
+                "piano_roll_btn": piano_roll_btn,
             })
 
-            # Inline column-header row - repeats "Bar" / step-number labels
-            # directly above this part's own bar rows, since the table's
-            # single sticky header (now hidden) could only ever sit above
-            # the very first row in the whole table.
-            self._sequencer_table.setRowHeight(header_row, STEPS_COLHEADER_ROW_HEIGHT)
-            for col_idx, label in enumerate(self._sequencer_header_labels()):
-                header_item = QTableWidgetItem(label)
-                header_item.setFlags(Qt.ItemFlag.NoItemFlags)
-                header_item.setTextAlignment(int(Qt.AlignmentFlag.AlignCenter))
-                header_item.setBackground(QColor(BG_PANEL))
-                header_item.setForeground(QColor(TEXT_DIM))
-                header_item.setFont(bold_font)
-                self._sequencer_table.setItem(header_row, col_idx, header_item)
+            piano_mode = info["kind"] == "gate" and self._part_piano_roll_mode.get(part_idx, False)
+
+            if piano_mode:
+                self._sequencer_table.setRowHeight(header_row, PIANO_ROLL_AREA_HEIGHT)
+            else:
+                # Inline column-header row - repeats "Bar" / step-number labels
+                # directly above this part's own bar rows, since the table's
+                # single sticky header (now hidden) could only ever sit above
+                # the very first row in the whole table.
+                self._sequencer_table.setRowHeight(header_row, STEPS_COLHEADER_ROW_HEIGHT)
+                for col_idx, label in enumerate(self._sequencer_header_labels()):
+                    header_item = QTableWidgetItem(label)
+                    header_item.setFlags(Qt.ItemFlag.NoItemFlags)
+                    header_item.setTextAlignment(int(Qt.AlignmentFlag.AlignCenter))
+                    header_item.setBackground(QColor(BG_PANEL))
+                    header_item.setForeground(QColor(TEXT_DIM))
+                    header_item.setFont(bold_font)
+                    self._sequencer_table.setItem(header_row, col_idx, header_item)
             self._sequencer_table.setRowHidden(header_row, not expanded)
 
             row_cursor += 2
             seq_group_start = row_cursor
 
-            for bar in range(num_bars):
-                row = seq_group_start + bar
-                self._set_readonly_item(row, SEQ_BAR_COL, str(bar + 1), table=self._sequencer_table,
-                                         alignment=Qt.AlignmentFlag.AlignCenter)
-                bar_item = self._sequencer_table.item(row, SEQ_BAR_COL)
-                bar_item.setBackground(QColor(shade))
-                bar_item.setForeground(QColor(TEXT_DIM))
-                self._sequencer_table.setRowHidden(row, not expanded)
-                for col in range(steps_per_bar):
-                    global_step = bar * steps_per_bar + col
-                    if global_step >= STEP_DATA_CAPACITY:
-                        break
-                    on = self._get_step_state(info, global_step)
-                    step_btn = QPushButton("")
-                    step_btn.setCheckable(True)
-                    step_btn.setChecked(on)
-                    step_btn.setFixedSize(22, 24)
-                    self._style_step_button(step_btn, on)
-                    step_btn.toggled.connect(
-                        lambda checked, r=row, c=col, g=global_step: self._on_step_toggled(r, c, g, checked)
-                    )
-                    self._step_buttons[(part_idx, global_step)] = step_btn
-                    # Wrapped so the fixed-size button is centered in the step
-                    # column instead of hugging the cell's top-left corner
-                    # when the column is wider than the button.
-                    step_cell = QWidget()
-                    step_cell_layout = QHBoxLayout(step_cell)
-                    step_cell_layout.setContentsMargins(0, 0, 0, 0)
-                    step_cell_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    step_cell_layout.addWidget(step_btn)
-                    self._sequencer_table.setCellWidget(row, SEQ_STEP_TABLE_COL[col], step_cell)
+            if piano_mode:
+                for bar in range(num_bars):
+                    row = seq_group_start + bar
+                    self._sequencer_table.setRowHeight(row, 1)
+                    self._sequencer_table.setRowHidden(row, not expanded)
+                get_note, set_note, get_gate, set_gate = self._make_piano_roll_callbacks(part)
+                piano = PianoRollWidget(get_note, set_note, get_gate, set_gate, num_bars, steps_per_bar)
+                piano.edited.connect(lambda i=part_idx: self._on_piano_roll_edited(i))
+                self._sequencer_table.setSpan(header_row, 0, 1 + num_bars, SEQ_TOTAL_COLUMNS)
+                self._sequencer_table.setCellWidget(header_row, 0, piano)
+                self._piano_roll_widgets[part_idx] = piano
+            else:
+                for bar in range(num_bars):
+                    row = seq_group_start + bar
+                    self._set_readonly_item(row, SEQ_BAR_COL, str(bar + 1), table=self._sequencer_table,
+                                             alignment=Qt.AlignmentFlag.AlignCenter)
+                    bar_item = self._sequencer_table.item(row, SEQ_BAR_COL)
+                    bar_item.setBackground(QColor(shade))
+                    bar_item.setForeground(QColor(TEXT_DIM))
+                    self._sequencer_table.setRowHidden(row, not expanded)
+                    for col in range(steps_per_bar):
+                        global_step = bar * steps_per_bar + col
+                        if global_step >= STEP_DATA_CAPACITY:
+                            break
+                        on = self._get_step_state(info, global_step)
+                        step_btn = QPushButton("")
+                        step_btn.setCheckable(True)
+                        step_btn.setChecked(on)
+                        step_btn.setFixedSize(22, 24)
+                        self._style_step_button(step_btn, on)
+                        step_btn.toggled.connect(
+                            lambda checked, r=row, c=col, g=global_step: self._on_step_toggled(r, c, g, checked)
+                        )
+                        self._step_buttons[(part_idx, global_step)] = step_btn
+                        # Wrapped so the fixed-size button is centered in the step
+                        # column instead of hugging the cell's top-left corner
+                        # when the column is wider than the button.
+                        step_cell = QWidget()
+                        step_cell_layout = QHBoxLayout(step_cell)
+                        step_cell_layout.setContentsMargins(0, 0, 0, 0)
+                        step_cell_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                        step_cell_layout.addWidget(step_btn)
+                        self._sequencer_table.setCellWidget(row, SEQ_STEP_TABLE_COL[col], step_cell)
 
-                for divider_col, boundary_step in SEQ_DIVIDER_TABLE_COLS:
-                    if boundary_step + 1 >= steps_per_bar:
-                        continue
-                    divider_item = QTableWidgetItem("")
-                    divider_item.setFlags(Qt.ItemFlag.NoItemFlags)
-                    divider_item.setBackground(QColor(BORDER_LIGHT))
-                    self._sequencer_table.setItem(row, divider_col, divider_item)
+                    for divider_col, boundary_step in SEQ_DIVIDER_TABLE_COLS:
+                        if boundary_step + 1 >= steps_per_bar:
+                            continue
+                        divider_item = QTableWidgetItem("")
+                        divider_item.setFlags(Qt.ItemFlag.NoItemFlags)
+                        divider_item.setBackground(QColor(BORDER_LIGHT))
+                        self._sequencer_table.setItem(row, divider_col, divider_item)
 
             row_cursor = seq_group_start + num_bars
             if part_idx < num_parts - 1:
@@ -903,6 +1147,14 @@ class TabPatterns(QWidget):
 
     def _on_step_toggled(self, row, col, global_step, checked):
         info = self._step_rows[self._part_index_for_table_row(row)]
+        if checked and info["kind"] == "gate":
+            # A Keyboard step turned on from the plain grid (rather than
+            # picked explicitly in the Piano Roll) has no note of its own
+            # yet - default it to C4, same as a fresh/never-edited note
+            # byte, so it plays at a sane pitch instead of MIDI note 0.
+            note_data = info["part"].sequence_data_note.data
+            if global_step < len(note_data) and note_data[global_step] == 0:
+                note_data[global_step] = DEFAULT_KEYBOARD_NOTE
         self._set_step_state(info, global_step, checked)
         btn = self._step_button_at(row, col)
         if btn:
@@ -1009,22 +1261,35 @@ class TabPatterns(QWidget):
         if info["kind"] == "bits":
             self._step_clipboard = ("bits", bytearray(part.sequence_data.data))
         else:
-            self._step_clipboard = ("gate", bytearray(part.sequence_data_gate.data))
+            # Notes travel along with the gate bytes - copying only the
+            # gate would silently drop every note set via the Piano Roll
+            # once pasted elsewhere.
+            self._step_clipboard = (
+                "gate", bytearray(part.sequence_data_gate.data), bytearray(part.sequence_data_note.data)
+            )
         self._refresh_paste_buttons()
 
     def _paste_steps(self, part_idx):
         if self._step_clipboard is None:
             return
-        kind, data = self._step_clipboard
+        kind = self._step_clipboard[0]
         info = self._step_rows[part_idx]
         if info["kind"] != kind:
             return
-        target = info["part"].sequence_data.data if kind == "bits" else info["part"].sequence_data_gate.data
-        target[:] = data
+        if kind == "bits":
+            info["part"].sequence_data.data[:] = self._step_clipboard[1]
+        else:
+            info["part"].sequence_data_gate.data[:] = self._step_clipboard[1]
+            info["part"].sequence_data_note.data[:] = self._step_clipboard[2]
         self._refresh_step_buttons(part_idx)
         self._refresh_sequencer_playback()
 
     def _refresh_step_buttons(self, part_idx):
+        if self._part_piano_roll_mode.get(part_idx):
+            widget = self._piano_roll_widgets.get(part_idx)
+            if widget:
+                widget.refresh()
+            return
         info = self._step_rows[part_idx]
         group = self._step_groups[part_idx]
         steps_per_bar = self._current_last_step_count()
