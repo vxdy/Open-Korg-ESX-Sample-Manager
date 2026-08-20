@@ -53,3 +53,14 @@ def get_log_file_path() -> str:
     log_dir = os.path.join(_app_data_base(), "Logs")
     os.makedirs(log_dir, exist_ok=True)
     return os.path.join(log_dir, "error.log")
+
+
+def get_stem_deps_dir() -> str:
+    """Return the AppData folder the Stem Splitter installs its optional
+    torch/demucs dependencies into on demand, creating it if needed. These
+    packages are never part of the frozen .exe bundle (see main.spec's
+    excludes and audio/stem_deps.py) - they're pip-installed here the first
+    time the feature is actually used."""
+    deps_dir = os.path.join(_app_data_base(), "StemDeps")
+    os.makedirs(deps_dir, exist_ok=True)
+    return deps_dir

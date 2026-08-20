@@ -38,6 +38,10 @@ jobs:
             --collect-all PyQt6 \
             --collect-all qtawesome \
             --collect-all sounddevice \
+            --collect-all pip \
+            --exclude-module torch \
+            --exclude-module torchaudio \
+            --exclude-module demucs \
             --add-data "ui/locales;ui/locales" \
             main.py
 

@@ -76,8 +76,18 @@ def _iter_playable_parts(pattern):
 
 def _get_step_state(part, kind, step):
     if kind == "gate":
-        data = part.sequence_data_gate.data
-        return step < len(data) and data[step] != 0
+        gate_data = part.sequence_data_gate.data
+        if step >= len(gate_data) or gate_data[step] == 0:
+            return False
+        # The gate byte alone doesn't distinguish an active step from one
+        # that's been switched off - real ESX files leave it at whatever
+        # non-zero value it had the first time the step was touched, and
+        # instead flag "off" via the note byte's bit 7 (e.g. a C4/60 step
+        # that's off is stored as note 60|0x80=188), so the hardware still
+        # remembers the pitch if the step is switched back on. See
+        # ui/tab_patterns.py's TabPatterns._get_step_state (same encoding).
+        note_data = part.sequence_data_note.data
+        return step >= len(note_data) or note_data[step] < 0x80
     # "bits" (drum) and "stretch" both use the same 1-bit/step encoding.
     data = part.sequence_data.data
     byte_i, bit_i = divmod(step, 8)
@@ -86,7 +96,10 @@ def _get_step_state(part, kind, step):
 
 def _get_step_note(part, step):
     data = part.sequence_data_note.data
-    return data[step] if step < len(data) else 60
+    # Bit 7 is the gate-kind steps' own off flag (see _get_step_state) -
+    # mask it off so a step that's off-but-remembers-its-pitch still
+    # yields a playable 0-127 MIDI note rather than an out-of-range byte.
+    return (data[step] & 0x7F) if step < len(data) else 60
 
 
 def _cutoff_to_hz(cutoff: int) -> float:

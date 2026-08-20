@@ -283,6 +283,17 @@ class TabSamples(QWidget):
         playback_layout.addWidget(tools_stop_btn)
         layout.addWidget(playback_group)
 
+        stem_group = QGroupBox(tr("stem_splitter.title"))
+        stem_layout = QVBoxLayout(stem_group)
+        stem_hint = QLabel(tr("tab_samples.stem_splitter_hint"))
+        stem_hint.setStyleSheet(f"color: {TEXT_DIM};")
+        stem_hint.setWordWrap(True)
+        stem_layout.addWidget(stem_hint)
+        stem_splitter_btn = QPushButton(icons.icon("wand-magic-sparkles"), tr("main_window.action_stem_splitter"))
+        stem_splitter_btn.clicked.connect(self.open_stem_splitter)
+        stem_layout.addWidget(stem_splitter_btn)
+        layout.addWidget(stem_group)
+
         layout.addStretch()
         return widget
 
@@ -1006,6 +1017,33 @@ class TabSamples(QWidget):
             QMessageBox.warning(self, tr("tab_samples.import_errors_title"), "\n".join(errors))
         elif imported:
             QMessageBox.information(self, tr("tab_samples.import_title"), tr("tab_samples.imported_n_samples", n=len(imported)))
+
+    def next_empty_slot(self, start: int, want_stereo: bool):
+        """Public wrapper around _find_next_empty_slot for external tools
+        (e.g. the Stem Splitter dialog) that need to suggest a destination
+        slot without reaching into a private method."""
+        return self._find_next_empty_slot(start, want_stereo)
+
+    def commit_new_sample(self, slot: int, sample):
+        """Places a freshly built Sample into a slot and refreshes the UI -
+        the same tail import_samples() runs per imported file. Callers are
+        responsible for any overwrite confirmation before calling this."""
+        self._esx.samples[slot] = sample
+        self._deleted_sample_indices.discard(slot)
+        self.update_data(self._esx)
+        self._sample_table.selectRow(slot)
+        self._on_sample_selected()
+
+    def open_stem_splitter(self):
+        if self._esx is None:
+            QMessageBox.warning(self, tr("stem_splitter.title"), tr("tab_samples.no_esx_file_loaded"))
+            return
+        from ui.stem_splitter_dialog import StemSplitterDialog
+        initial_sample = self._current_sample
+        if initial_sample is not None and initial_sample.is_empty():
+            initial_sample = None
+        dialog = StemSplitterDialog(self, self._esx, initial_sample=initial_sample)
+        dialog.exec()
 
     def _selected_rows(self) -> list[int]:
         return sorted({idx.row() for idx in self._sample_table.selectionModel().selectedRows()})

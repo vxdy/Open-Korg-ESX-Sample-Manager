@@ -153,8 +153,17 @@ class MainWindow(QMainWindow):
         )
         self.delete_unused_samples_action.triggered.connect(self._delete_unused_samples)
 
+        self.stem_splitter_action = QAction(
+            icons.icon("wand-magic-sparkles"), tr("main_window.action_stem_splitter"), self
+        )
+        self.stem_splitter_action.setToolTip(tr("main_window.action_stem_splitter_tooltip"))
+        self.stem_splitter_action.triggered.connect(self._open_stem_splitter)
+
         self.about_action = QAction(icons.icon("circle-info"), tr("main_window.action_about"), self)
         self.about_action.triggered.connect(self._show_about)
+
+        self.enable_stem_model_action = QAction(tr("main_window.action_enable_stem_model"), self)
+        self.enable_stem_model_action.triggered.connect(self._enable_stem_model)
 
         self.send_debug_data_action = QAction(tr("main_window.action_send_debug_data"), self)
         self.send_debug_data_action.setCheckable(True)
@@ -181,10 +190,13 @@ class MainWindow(QMainWindow):
         samples_menu.addSeparator()
         samples_menu.addAction(self.delete_selected_samples_action)
         samples_menu.addAction(self.delete_unused_samples_action)
+        samples_menu.addSeparator()
+        samples_menu.addAction(self.stem_splitter_action)
 
         help_menu = menubar.addMenu(tr("main_window.menu_help"))
         help_menu.addAction(self.about_action)
         help_menu.addSeparator()
+        help_menu.addAction(self.enable_stem_model_action)
         help_menu.addAction(self.send_debug_data_action)
 
     def _setup_toolbar(self):
@@ -198,6 +210,7 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.save_action)
         toolbar.addSeparator()
         toolbar.addAction(self.import_samples_action)
+        toolbar.addAction(self.stem_splitter_action)
 
     def _setup_dock(self):
         self.file_explorer = FileExplorer()
@@ -248,7 +261,7 @@ class MainWindow(QMainWindow):
         load/save is in flight, and show a busy cursor as extra feedback."""
         for action in (
             self.new_action, self.open_action, self.save_action, self.save_as_action,
-            self.import_samples_action,
+            self.import_samples_action, self.stem_splitter_action,
         ):
             action.setEnabled(not busy)
         if busy:
@@ -399,6 +412,17 @@ class MainWindow(QMainWindow):
             return
         self.tab_widget.setCurrentWidget(self.tab_samples)
         self.tab_samples.delete_unused_samples()
+
+    def _open_stem_splitter(self):
+        if self.esx_file is None:
+            QMessageBox.warning(self, tr("common.warning_title"), tr("main_window.no_file_loaded_body"))
+            return
+        self.tab_widget.setCurrentWidget(self.tab_samples)
+        self.tab_samples.open_stem_splitter()
+
+    def _enable_stem_model(self):
+        from ui.stem_splitter_dialog import run_consent_and_preload
+        run_consent_and_preload(self)
 
     def _show_about(self):
         QMessageBox.information(

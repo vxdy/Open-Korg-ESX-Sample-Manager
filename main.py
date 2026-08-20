@@ -22,6 +22,15 @@ def _install_excepthook():
 
 
 if __name__ == "__main__":
+    # Private, undocumented entry point the app re-invokes itself with to
+    # install the Stem Splitter's optional torch/demucs dependencies on
+    # demand (see audio/stem_deps.py) - runs pip in-process and exits
+    # without ever touching Qt, so it works the same whether this is a
+    # frozen .exe or a source checkout.
+    if len(sys.argv) > 1 and sys.argv[1] == "--pip-worker":
+        from audio.stem_deps import run_pip_worker
+        sys.exit(run_pip_worker(sys.argv[2:]))
+
     app = QApplication(sys.argv)
     app.setApplicationName("Open Electribe Editor")
     app.setOrganizationName("open-electribe-editor")
