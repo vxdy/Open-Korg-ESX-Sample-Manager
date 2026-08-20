@@ -7,7 +7,7 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QSettings
 from PyQt6.QtGui import QAction
 
 from esx.esx_file import EsxFile
-from esx.app_paths import get_blank_template_path
+from esx.app_paths import get_blank_template_path, create_backup
 from ui.tab_info import TabInfo
 from ui.tab_global import TabGlobal
 from ui.tab_patterns import TabPatterns
@@ -32,10 +32,17 @@ class LoadThread(QThread):
     def run(self):
         try:
             esx = EsxFile.load(self.filepath)
-            self.finished.emit(esx)
         except Exception as e:
             report_error("load_esx", e, self.filepath)
             self.error.emit(str(e))
+            return
+
+        try:
+            create_backup(self.filepath)
+        except OSError as e:
+            report_error("create_backup", e, self.filepath)
+
+        self.finished.emit(esx)
 
 
 class SaveThread(QThread):

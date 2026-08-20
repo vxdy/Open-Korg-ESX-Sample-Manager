@@ -231,6 +231,8 @@ class StemSplitterDialog(QDialog):
         self._stem_checks = {}
         self._stem_waveforms = {}
         self._stem_play_buttons = {}
+        self._initial_slot = None
+        self._initial_is_stereo = False
 
         self.setWindowTitle(tr("stem_splitter.title"))
         self.resize(760, 660)
@@ -240,6 +242,13 @@ class StemSplitterDialog(QDialog):
         self._update_slot_range()
 
         if initial_sample is not None and not initial_sample.is_empty():
+            self._initial_slot = initial_sample.sample_number
+            self._initial_is_stereo = initial_sample.is_stereo_original
+            self._overwrite_btn.setToolTip(tr(
+                "stem_splitter.overwrite_current_sample_tooltip",
+                slot=self._initial_slot,
+                name=initial_sample.name.strip('\x00').strip() or tr("common.empty_placeholder"),
+            ))
             self._load_from_sample(initial_sample)
 
     # ------------------------------------------------------------------
@@ -296,8 +305,12 @@ class StemSplitterDialog(QDialog):
         slot_layout.addWidget(self._slot_spin)
         slot_layout.addStretch()
         self._save_btn = QPushButton(icons.icon("floppy-disk"), tr("stem_splitter.save_to_slot"))
-        self._save_btn.clicked.connect(self._save_to_slot)
+        self._save_btn.clicked.connect(lambda: self._save_to_slot())
         slot_layout.addWidget(self._save_btn)
+        self._overwrite_btn = QPushButton(icons.icon("rotate"), tr("stem_splitter.overwrite_current_sample"))
+        self._overwrite_btn.setToolTip(tr("stem_splitter.overwrite_current_sample_unavailable"))
+        self._overwrite_btn.clicked.connect(self._overwrite_current_sample)
+        slot_layout.addWidget(self._overwrite_btn)
         layout.addWidget(slot_group)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
@@ -412,6 +425,7 @@ class StemSplitterDialog(QDialog):
             self._stem_checks[name].setChecked(True)
         self._play_mix_btn.setEnabled(False)
         self._save_btn.setEnabled(False)
+        self._overwrite_btn.setEnabled(False)
 
     # ------------------------------------------------------------------
     # Split flow
@@ -464,6 +478,7 @@ class StemSplitterDialog(QDialog):
 
         self._play_mix_btn.setEnabled(any_stem)
         self._save_btn.setEnabled(any_stem)
+        self._overwrite_btn.setEnabled(any_stem and self._initial_slot is not None)
         self._update_slot_range()
 
     def _on_separation_error(self, error: str):
@@ -521,7 +536,16 @@ class StemSplitterDialog(QDialog):
         self._slot_spin.setValue(suggested if suggested is not None else lo)
         self._slot_spin.blockSignals(False)
 
-    def _save_to_slot(self):
+    def _overwrite_current_sample(self):
+        """Mixes the selected stems back into the exact slot the input
+        sample was loaded from, preserving its original mono/stereo-ness
+        rather than the "Mono" checkbox (which only governs the separate
+        "Save to Sample Slot" destination picker)."""
+        if self._initial_slot is None:
+            return
+        self._save_to_slot(slot=self._initial_slot, mono=not self._initial_is_stereo)
+
+    def _save_to_slot(self, slot: int = None, mono: bool = None):
         selected = self._selected_stem_names()
         if not selected:
             QMessageBox.information(self, tr("stem_splitter.title"), tr("stem_splitter.no_stems_selected"))
@@ -532,8 +556,10 @@ class StemSplitterDialog(QDialog):
             QMessageBox.information(self, tr("stem_splitter.title"), tr("stem_splitter.no_stems_selected"))
             return
 
-        mono = self._mono_check.isChecked()
-        slot = self._slot_spin.value()
+        if mono is None:
+            mono = self._mono_check.isChecked()
+        if slot is None:
+            slot = self._slot_spin.value()
 
         if not self._esx.samples[slot].is_empty():
             reply = QMessageBox.question(

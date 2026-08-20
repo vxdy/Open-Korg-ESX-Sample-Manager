@@ -1,5 +1,7 @@
 import os
+import shutil
 import sys
+from datetime import datetime
 
 from PyQt6.QtCore import QStandardPaths
 
@@ -45,6 +47,34 @@ def get_patterns_dir() -> str:
     patterns_dir = os.path.join(_app_data_base(), "Patterns")
     os.makedirs(patterns_dir, exist_ok=True)
     return patterns_dir
+
+
+def get_backups_dir() -> str:
+    """Return the AppData folder where versioned backups of loaded .esx
+    files are stored, creating it if it doesn't exist yet. Sits alongside
+    get_patterns_dir()'s "Patterns" folder in the same AppData location."""
+    backups_dir = os.path.join(_app_data_base(), "Backups")
+    os.makedirs(backups_dir, exist_ok=True)
+    return backups_dir
+
+
+def create_backup(filepath: str) -> str:
+    """Copy filepath into the Backups folder under a timestamped name, so
+    repeated loads of the same (or differently-named) file build up a
+    versioned history instead of overwriting each other. Returns the
+    backup's path."""
+    basename = os.path.splitext(os.path.basename(filepath))[0]
+    ext = os.path.splitext(filepath)[1] or ".esx"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    backup_path = os.path.join(get_backups_dir(), f"{basename}_{timestamp}{ext}")
+    counter = 1
+    while os.path.exists(backup_path):
+        backup_path = os.path.join(get_backups_dir(), f"{basename}_{timestamp}_{counter}{ext}")
+        counter += 1
+
+    shutil.copy2(filepath, backup_path)
+    return backup_path
 
 
 def get_log_file_path() -> str:

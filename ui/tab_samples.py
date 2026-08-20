@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem, QTabWidget, QFormLayout, QLineEdit, QLabel,
     QPushButton, QComboBox, QSpinBox, QDoubleSpinBox, QHeaderView,
     QAbstractItemView, QGroupBox, QFileDialog, QMessageBox, QDialog,
-    QDialogButtonBox, QMenu, QProgressBar, QCheckBox
+    QDialogButtonBox, QMenu, QProgressBar, QCheckBox, QScrollArea
 )
 from PyQt6.QtCore import Qt
 
@@ -16,7 +16,7 @@ from esx.constants import (
 from esx.sample import Sample
 from esx import audio_dsp
 from esx.audio_dsp import EQBand
-from ui.waveform_widget import WaveformWidget
+from ui.waveform_widget import WaveformWidget, WaveformZoomPanel
 from ui.eq_curve_widget import EqCurveWidget
 from ui.error_log import report_error
 from ui.i18n import tr
@@ -146,6 +146,7 @@ class TabSamples(QWidget):
         self._stretch_step_combo.addItem(tr("tab_samples.stretch_off"), int(StretchStep.OFF))
         for step in range(1, 129):
             self._stretch_step_combo.addItem(str(step), step - 1)
+        self._stretch_step_combo.currentIndexChanged.connect(self._on_stretch_step_combo_changed)
         form.addRow(tr("tab_samples.stretch_step_colon"), self._stretch_step_combo)
 
         editor_layout.addWidget(form_group)
@@ -189,17 +190,21 @@ class TabSamples(QWidget):
         splitter.setSizes([350, 650])
 
     def _build_tools_tab(self) -> QWidget:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setSpacing(10)
 
         waveform_group = QGroupBox(tr("common.waveform"))
         wf_layout = QVBoxLayout(waveform_group)
-        self._tools_waveform = WaveformWidget()
+        self._tools_waveform = WaveformZoomPanel()
         self._tools_waveform.set_editable(True)
         self._tools_waveform.selectionChanged.connect(self._on_waveform_selection_changed)
         wf_layout.addWidget(self._tools_waveform)
-        wf_hint = QLabel(tr("tab_samples.waveform_hint"))
+        wf_hint = QLabel(f'{tr("tab_samples.waveform_hint")} {tr("tab_samples.waveform_zoom_hint")}')
         wf_hint.setStyleSheet(f"color: {TEXT_DIM};")
         wf_hint.setWordWrap(True)
         wf_layout.addWidget(wf_hint)
@@ -295,7 +300,8 @@ class TabSamples(QWidget):
         layout.addWidget(stem_group)
 
         layout.addStretch()
-        return widget
+        scroll.setWidget(widget)
+        return scroll
 
     # Internal (untranslated) type keys, in display order - the actual
     # per-language labels are built by _eq_band_type_choices() at widget-
@@ -652,6 +658,16 @@ class TabSamples(QWidget):
         self._tools_waveform.set_audio(
             sample.get_audio_channel_both(), sample.start, sample.end, sample.loop_start
         )
+        self._tools_waveform.set_step_grid(self._current_stretch_step_count())
+
+    def _current_stretch_step_count(self) -> int:
+        step_value = self._stretch_step_combo.currentData()
+        if step_value is None or step_value == int(StretchStep.OFF):
+            return 0
+        return step_value + 1
+
+    def _on_stretch_step_combo_changed(self, _index=None):
+        self._tools_waveform.set_step_grid(self._current_stretch_step_count())
 
     def _on_waveform_selection_changed(self, start: int, end: int):
         self._trim_start_spin.blockSignals(True)
